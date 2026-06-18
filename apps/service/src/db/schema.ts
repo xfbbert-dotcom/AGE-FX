@@ -7,7 +7,7 @@ export function applySchema(db: DatabaseSync): void {
       source TEXT NOT NULL CHECK (source IN ('chatgpt', 'gemini')),
       captured_at TEXT NOT NULL,
       conversation_date TEXT NOT NULL,
-      conversation_title TEXT NOT NULL,
+      conversation_title TEXT,
       page_url TEXT NOT NULL,
       message_role TEXT NOT NULL CHECK (message_role IN ('user', 'assistant', 'unknown')),
       message_text TEXT NOT NULL,
@@ -20,14 +20,21 @@ export function applySchema(db: DatabaseSync): void {
     CREATE TABLE IF NOT EXISTS daily_analyses (
       id INTEGER PRIMARY KEY AUTOINCREMENT,
       analysis_date TEXT NOT NULL UNIQUE,
-      summary_text TEXT NOT NULL,
+      thought_title TEXT NOT NULL,
+      report_json TEXT NOT NULL,
       created_at TEXT NOT NULL
     );
 
     CREATE TABLE IF NOT EXISTS equipment_items (
       id INTEGER PRIMARY KEY AUTOINCREMENT,
-      name TEXT NOT NULL,
-      description TEXT NOT NULL,
+      analysis_date TEXT NOT NULL,
+      equipment_name TEXT NOT NULL,
+      equipment_type TEXT NOT NULL,
+      why_this_equipment TEXT NOT NULL,
+      source_battle_insight TEXT NOT NULL,
+      minimum_viable_version TEXT NOT NULL,
+      expected_benefit TEXT NOT NULL,
+      print_prompt TEXT NOT NULL,
       state TEXT NOT NULL CHECK (state IN ('recommended', 'approved', 'printed', 'archived')),
       created_at TEXT NOT NULL,
       updated_at TEXT NOT NULL

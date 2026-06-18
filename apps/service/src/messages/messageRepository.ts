@@ -5,7 +5,7 @@ export interface CapturedMessageInput {
   source: MessageSource;
   capturedAt: string;
   conversationDate: string;
-  conversationTitle: string;
+  conversationTitle: string | null;
   pageUrl: string;
   messageRole: MessageRole;
   messageText: string;
@@ -21,7 +21,7 @@ interface CapturedMessageRow {
   source: MessageSource;
   captured_at: string;
   conversation_date: string;
-  conversation_title: string;
+  conversation_title: string | null;
   page_url: string;
   message_role: MessageRole;
   message_text: string;
@@ -34,7 +34,7 @@ export function insertCapturedMessage(
 ): { inserted: boolean } {
   const result = db
     .prepare(`
-      INSERT OR IGNORE INTO captured_messages (
+      INSERT INTO captured_messages (
         source,
         captured_at,
         conversation_date,
@@ -53,6 +53,7 @@ export function insertCapturedMessage(
         $messageText,
         $contentHash
       )
+      ON CONFLICT(content_hash) DO NOTHING
     `)
     .run({
       $source: message.source,

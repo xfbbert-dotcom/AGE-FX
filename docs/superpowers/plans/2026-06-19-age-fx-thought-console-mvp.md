@@ -387,28 +387,33 @@ Create `apps/service/tests/messageRepository.test.ts`:
 import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import type { DatabaseSync } from "node:sqlite";
+import { afterEach, describe, expect, it } from "vitest";
 import { openAgeDatabase } from "../src/db/client.js";
 import { insertCapturedMessage, listMessagesForDate } from "../src/messages/messageRepository.js";
 
-let root: string;
-
-beforeEach(() => {
-  root = mkdtempSync(join(tmpdir(), "age-fx-test-"));
-});
+let root: string | undefined;
+let db: DatabaseSync | undefined;
 
 afterEach(() => {
-  rmSync(root, { recursive: true, force: true });
+  db?.close();
+  db = undefined;
+
+  if (root) {
+    rmSync(root, { recursive: true, force: true });
+    root = undefined;
+  }
 });
 
 describe("message repository", () => {
   it("creates the database and deduplicates captured messages", () => {
-    const db = openAgeDatabase(root);
+    root = mkdtempSync(join(tmpdir(), "age-fx-test-"));
+    db = openAgeDatabase(root);
     const message = {
       source: "chatgpt" as const,
       capturedAt: "2026-06-19T08:00:00.000Z",
       conversationDate: "2026-06-19",
-      conversationTitle: "AGE system",
+      conversationTitle: null,
       pageUrl: "https://chatgpt.com/c/age",
       messageRole: "user" as const,
       messageText: "I like AGE-FX",
@@ -418,6 +423,37 @@ describe("message repository", () => {
     expect(insertCapturedMessage(db, message)).toEqual({ inserted: true });
     expect(insertCapturedMessage(db, message)).toEqual({ inserted: false });
     expect(listMessagesForDate(db, "2026-06-19")).toHaveLength(1);
+    expect(listMessagesForDate(db, "2026-06-19")[0]?.conversationTitle).toBeNull();
+  });
+
+  it("throws on invalid source or role constraints", () => {
+    root = mkdtempSync(join(tmpdir(), "age-fx-test-"));
+    db = openAgeDatabase(root);
+    const message = {
+      source: "chatgpt" as const,
+      capturedAt: "2026-06-19T08:00:00.000Z",
+      conversationDate: "2026-06-19",
+      conversationTitle: null,
+      pageUrl: "https://chatgpt.com/c/age",
+      messageRole: "user" as const,
+      messageText: "I like AGE-FX",
+      contentHash: "hash-1"
+    };
+
+    expect(() =>
+      insertCapturedMessage(db as DatabaseSync, {
+        ...message,
+        source: "claude",
+        contentHash: "invalid-source"
+      } as unknown as Parameters<typeof insertCapturedMessage>[1])
+    ).toThrow();
+    expect(() =>
+      insertCapturedMessage(db as DatabaseSync, {
+        ...message,
+        messageRole: "system",
+        contentHash: "invalid-role"
+      } as unknown as Parameters<typeof insertCapturedMessage>[1])
+    ).toThrow();
   });
 });
 ```
@@ -546,7 +582,7 @@ export function insertCapturedMessage(
   message: CapturedMessageInput
 ): { inserted: boolean } {
   const result = db.prepare(`
-    INSERT OR IGNORE INTO captured_messages (
+    INSERT INTO captured_messages (
       source,
       captured_at,
       conversation_date,
@@ -565,6 +601,7 @@ export function insertCapturedMessage(
       @messageText,
       @contentHash
     )
+    ON CONFLICT(content_hash) DO NOTHING
   `).run(message);
 
   return { inserted: result.changes === 1 };

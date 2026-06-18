@@ -1,6 +1,7 @@
 import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+import type { DatabaseSync } from "node:sqlite";
 import { afterEach, describe, expect, it } from "vitest";
 import { createContentHash } from "../src/hash.js";
 import { openAgeDatabase } from "../src/db/client.js";
@@ -11,8 +12,12 @@ import {
 
 describe("message repository", () => {
   let tempRoot: string | undefined;
+  let db: DatabaseSync | undefined;
 
   afterEach(() => {
+    db?.close();
+    db = undefined;
+
     if (tempRoot) {
       rmSync(tempRoot, { force: true, recursive: true });
       tempRoot = undefined;
@@ -21,12 +26,12 @@ describe("message repository", () => {
 
   it("stores captured messages once by content hash and lists them for a date", () => {
     tempRoot = mkdtempSync(join(tmpdir(), "age-fx-"));
-    const db = openAgeDatabase(tempRoot);
+    db = openAgeDatabase(tempRoot);
     const message = {
       source: "chatgpt" as const,
       capturedAt: "2026-06-19T12:34:56.000Z",
       conversationDate: "2026-06-19",
-      conversationTitle: "AGE-FX planning",
+      conversationTitle: null,
       pageUrl: "https://chatgpt.com/c/example",
       messageRole: "user" as const,
       messageText: "Store this captured thought",
@@ -47,7 +52,40 @@ describe("message repository", () => {
         ...message
       }
     ]);
+  });
 
-    db.close();
+  it("throws on invalid source or role constraints", () => {
+    tempRoot = mkdtempSync(join(tmpdir(), "age-fx-"));
+    db = openAgeDatabase(tempRoot);
+    const message = {
+      source: "chatgpt" as const,
+      capturedAt: "2026-06-19T12:34:56.000Z",
+      conversationDate: "2026-06-19",
+      conversationTitle: "AGE-FX planning",
+      pageUrl: "https://chatgpt.com/c/example",
+      messageRole: "user" as const,
+      messageText: "Store this captured thought",
+      contentHash: createContentHash({
+        source: "chatgpt",
+        pageUrl: "https://chatgpt.com/c/example",
+        messageRole: "user",
+        messageText: "Store this captured thought"
+      })
+    };
+
+    expect(() =>
+      insertCapturedMessage(db as DatabaseSync, {
+        ...message,
+        source: "claude",
+        contentHash: "invalid-source"
+      } as unknown as Parameters<typeof insertCapturedMessage>[1])
+    ).toThrow();
+    expect(() =>
+      insertCapturedMessage(db as DatabaseSync, {
+        ...message,
+        messageRole: "system",
+        contentHash: "invalid-role"
+      } as unknown as Parameters<typeof insertCapturedMessage>[1])
+    ).toThrow();
   });
 });
