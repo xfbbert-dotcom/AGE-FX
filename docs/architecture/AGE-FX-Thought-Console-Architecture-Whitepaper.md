@@ -16,7 +16,9 @@ This system is not a health tracker, productivity guilt machine, pressure monito
 
 The approved first-version architecture is:
 
-Browser Extension + Local Companion Service + D-Drive SQLite Database + Local Console UI.
+Microsoft Edge Extension + Local Companion Service + D-Drive SQLite Database + Local Console UI.
+
+Because Microsoft Edge uses the Chromium extension platform, the extension should be built as an Edge-first Manifest V3 extension while keeping the code portable to other Chromium browsers where practical.
 
 Future extension B, Import and Historical Backfill, is accepted as a later module. It is not part of the first implementation baseline.
 
@@ -32,7 +34,7 @@ Rejected for the first version:
 
 The first version contains four core subsystems:
 
-1. C-Funnels Capture Extension.
+1. C-Funnels Capture Extension for Microsoft Edge.
 2. Local AGE Database on the D drive.
 3. Thought Battle Analysis Console.
 4. AGE Equipment Recommendation and Archive.
@@ -41,14 +43,14 @@ The user keeps their normal habit: thinking directly with ChatGPT and Gemini in 
 
 ## 4. C-Funnels Capture Extension
 
-The browser extension runs only on supported conversation pages:
+The first target browser is Microsoft Edge. The browser extension runs only on supported conversation pages:
 
 - ChatGPT web.
 - Gemini web.
 
 When the user opens or uses those pages, the extension detects newly visible conversation messages and sends them to the local companion service.
 
-The extension must show a subtle lake-blue capture indicator so the user knows C-Funnels are active.
+The extension must show a subtle lake-blue capture indicator in Edge so the user knows C-Funnels are active.
 
 Captured message fields:
 
@@ -104,7 +106,7 @@ D:\AGE-FX-Thought-Console\logs
 
 The path may become configurable later. In the first version, the UI must show the active data path clearly so the user always knows where the AGE database lives.
 
-The extension may store minimal settings in browser storage:
+The Edge extension may store minimal settings in browser storage:
 
 - Capture enabled or disabled.
 - Local service URL.
@@ -256,7 +258,7 @@ The recommended first implementation sequence is:
 
 1. Create the local data directory and SQLite schema.
 2. Build the local companion service.
-3. Build the browser extension capture path for one source first.
+3. Build the Edge extension capture path for one source first.
 4. Add the second source.
 5. Build the local console UI.
 6. Add daily battle analysis.

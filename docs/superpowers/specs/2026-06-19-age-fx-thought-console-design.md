@@ -1,6 +1,6 @@
 # AGE-FX Thought Console Design
 
-Status: Awaiting user review
+Status: Approved
 Date: 2026-06-19
 
 ## Goal
@@ -11,7 +11,9 @@ Build a local-first AGE-FX-inspired thinking review system that automatically ca
 
 The approved architecture is option A:
 
-Browser Extension + Local Companion Service + D-Drive SQLite Database + Local Console UI.
+Microsoft Edge Extension + Local Companion Service + D-Drive SQLite Database + Local Console UI.
+
+The extension should be Edge-first and use the Chromium Manifest V3 extension model so future Chrome compatibility remains possible without changing the architecture.
 
 Future option B, Import and Historical Backfill, is accepted as a later extension.
 
@@ -23,7 +25,7 @@ The system must follow the constitution in:
 
 ### C-Funnels Capture Extension
 
-The browser extension runs on supported ChatGPT and Gemini conversation pages. It detects newly visible messages, deduplicates them by content hash, and sends them to the local companion service.
+The Microsoft Edge extension runs on supported ChatGPT and Gemini conversation pages. It detects newly visible messages, deduplicates them by content hash, and sends them to the local companion service.
 
 The extension stores only minimal browser settings and must not accumulate long-term conversation history in browser storage.
 
@@ -76,7 +78,7 @@ FX Burst Mode is a practical focused review mode. It uses the AGE-FX lake-blue c
 ## Data Flow
 
 1. The user opens or uses ChatGPT or Gemini in the browser.
-2. The extension observes visible conversation messages.
+2. The Edge extension observes visible conversation messages.
 3. The extension normalizes each message and computes `contentHash`.
 4. The extension posts message records to the local companion service.
 5. The companion service validates and stores new messages in SQLite.
@@ -111,7 +113,7 @@ The implementation plan should include tests for:
 - Local service capture endpoint.
 - Daily analysis input selection.
 - Equipment state transitions.
-- Extension capture parsing with saved HTML fixtures for ChatGPT and Gemini.
+- Edge extension capture parsing with saved HTML fixtures for ChatGPT and Gemini.
 
 Manual verification should include:
 
