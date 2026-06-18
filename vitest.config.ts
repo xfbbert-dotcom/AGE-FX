@@ -4,6 +4,11 @@ export default defineConfig({
   test: {
     globals: true,
     environment: "node",
-    include: ["apps/**/*.test.ts", "extension/**/*.test.ts"]
+    environmentMatchGlobs: [
+      ["apps/console/**/*.test.ts", "jsdom"],
+      ["extension/**/*.test.ts", "jsdom"]
+    ],
+    include: ["apps/**/*.test.ts", "extension/**/*.test.ts"],
+    passWithNoTests: true
   }
 });

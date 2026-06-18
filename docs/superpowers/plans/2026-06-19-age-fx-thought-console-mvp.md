@@ -14,6 +14,8 @@
 
 This MVP intentionally builds a working vertical slice, not every future capability. Historical import/backfill remains future extension B. Hidden scraping, login automation, cloud sync, and automatic equipment printing remain outside scope.
 
+Node 24's built-in `node:sqlite` / `DatabaseSync` currently emits `ExperimentalWarning`. That is accepted for this MVP to avoid native SQLite build tools on Windows, but it must be revalidated on Node upgrades and before long-term storage hardening.
+
 ## File Structure
 
 - `package.json`: root npm scripts for service, console, tests, and type checks.
