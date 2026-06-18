@@ -15,12 +15,12 @@ export function normalizeMessageText(text: string): string {
 }
 
 export function createContentHash(input: HashInput): string {
-  const hashInput = [
-    input.source,
-    input.pageUrl.trim(),
-    input.messageRole,
-    normalizeMessageText(input.messageText)
-  ].join("\u001f");
+  const hashInput = JSON.stringify({
+    source: input.source,
+    pageUrl: input.pageUrl.trim(),
+    messageRole: input.messageRole,
+    messageText: normalizeMessageText(input.messageText)
+  });
 
   return createHash("sha256").update(hashInput, "utf8").digest("hex");
 }

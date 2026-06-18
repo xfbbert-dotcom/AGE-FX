@@ -223,6 +223,84 @@ describe("message hashing", () => {
     });
     expect(userHash).not.toBe(assistantHash);
   });
+
+  it("does not collide when content contains the old field delimiter", () => {
+    const delimiter = "\u001f";
+    const first = createContentHash({
+      source: "chatgpt",
+      pageUrl: `https://chatgpt.com/c/abc${delimiter}user`,
+      messageRole: "assistant",
+      messageText: "same text"
+    });
+    const second = createContentHash({
+      source: "chatgpt",
+      pageUrl: "https://chatgpt.com/c/abc",
+      messageRole: "user",
+      messageText: `assistant${delimiter}same text`
+    });
+    expect(first).not.toBe(second);
+  });
+
+  it("changes hash when source changes", () => {
+    const chatGptHash = createContentHash({
+      source: "chatgpt",
+      pageUrl: "https://example.com/conversation",
+      messageRole: "user",
+      messageText: "same text"
+    });
+    const geminiHash = createContentHash({
+      source: "gemini",
+      pageUrl: "https://example.com/conversation",
+      messageRole: "user",
+      messageText: "same text"
+    });
+    expect(chatGptHash).not.toBe(geminiHash);
+  });
+
+  it("changes hash when pageUrl changes", () => {
+    const first = createContentHash({
+      source: "chatgpt",
+      pageUrl: "https://chatgpt.com/c/abc",
+      messageRole: "user",
+      messageText: "same text"
+    });
+    const second = createContentHash({
+      source: "chatgpt",
+      pageUrl: "https://chatgpt.com/c/xyz",
+      messageRole: "user",
+      messageText: "same text"
+    });
+    expect(first).not.toBe(second);
+  });
+
+  it("changes hash when normalized messageText changes", () => {
+    const first = createContentHash({
+      source: "chatgpt",
+      pageUrl: "https://chatgpt.com/c/abc",
+      messageRole: "user",
+      messageText: "first text"
+    });
+    const second = createContentHash({
+      source: "chatgpt",
+      pageUrl: "https://chatgpt.com/c/abc",
+      messageRole: "user",
+      messageText: "second text"
+    });
+    expect(first).not.toBe(second);
+  });
+
+  it("creates deterministic sha256 hex hashes", () => {
+    const input = {
+      source: "chatgpt" as const,
+      pageUrl: " https://chatgpt.com/c/abc ",
+      messageRole: "user" as const,
+      messageText: "same text"
+    };
+    const first = createContentHash(input);
+    const second = createContentHash(input);
+    expect(first).toBe(second);
+    expect(first).toMatch(/^[a-f0-9]{64}$/);
+  });
 });
 ```
 
@@ -258,13 +336,12 @@ export function normalizeMessageText(text: string): string {
 }
 
 export function createContentHash(input: HashInput): string {
-  const normalized = normalizeMessageText(input.messageText);
-  const hashInput = [
-    input.source,
-    input.pageUrl.trim(),
-    input.messageRole,
-    normalized
-  ].join("\u001f");
+  const hashInput = JSON.stringify({
+    source: input.source,
+    pageUrl: input.pageUrl.trim(),
+    messageRole: input.messageRole,
+    messageText: normalizeMessageText(input.messageText)
+  });
 
   return createHash("sha256").update(hashInput, "utf8").digest("hex");
 }
@@ -1592,13 +1669,12 @@ export function normalizeMessageText(text) {
 }
 
 export function createBrowserContentHash(input) {
-  const normalized = normalizeMessageText(input.messageText);
-  const hashInput = [
-    input.source,
-    input.pageUrl.trim(),
-    input.messageRole,
-    normalized
-  ].join("\u001f");
+  const hashInput = JSON.stringify({
+    source: input.source,
+    pageUrl: input.pageUrl.trim(),
+    messageRole: input.messageRole,
+    messageText: normalizeMessageText(input.messageText)
+  });
   let hash = 0x811c9dc5;
   for (let index = 0; index < hashInput.length; index += 1) {
     hash ^= hashInput.charCodeAt(index);
