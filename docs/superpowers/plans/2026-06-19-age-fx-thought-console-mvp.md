@@ -6,7 +6,7 @@
 
 **Architecture:** Follow `docs/architecture/AGE-FX-Thought-Console-Architecture-Whitepaper.md`. The service is a local Node app on `localhost`, the database lives under `D:\AGE-FX-Thought-Console`, and the Edge extension sends visible ChatGPT/Gemini messages to the service. The first analyzer is local and rule-based behind an interface so external AI can be added only after the architecture change protocol approves data-sharing behavior.
 
-**Tech Stack:** Node.js 24, npm, TypeScript for the service and console, plain JavaScript for the Edge extension runtime, Vite, Vitest, Express, supertest, better-sqlite3, Zod, Microsoft Edge Manifest V3 extension APIs, plain HTML/CSS for the extension popup.
+**Tech Stack:** Node.js 24, npm, TypeScript for the service and console, plain JavaScript for the Edge extension runtime, Vite, Vitest, Express, supertest, Node built-in `node:sqlite` / `DatabaseSync`, Zod, Microsoft Edge Manifest V3 extension APIs, plain HTML/CSS for the extension popup.
 
 ---
 
@@ -73,13 +73,11 @@ Create `package.json`:
     "build:extension": "node scripts/build-extension.mjs"
   },
   "dependencies": {
-    "better-sqlite3": "^11.8.1",
     "cors": "^2.8.5",
     "express": "^4.21.2",
     "zod": "^3.24.1"
   },
   "devDependencies": {
-    "@types/better-sqlite3": "^7.6.12",
     "@types/cors": "^2.8.17",
     "@types/express": "^4.17.21",
     "@types/node": "^22.10.5",
@@ -369,9 +367,9 @@ export const DEFAULT_SERVICE_PORT = 3987;
 Create `apps/service/src/db/schema.ts`:
 
 ```ts
-import type Database from "better-sqlite3";
+import type { DatabaseSync } from "node:sqlite";
 
-export function applySchema(db: Database.Database): void {
+export function applySchema(db: DatabaseSync): void {
   db.exec(`
     CREATE TABLE IF NOT EXISTS captured_messages (
       id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -419,13 +417,13 @@ export function applySchema(db: Database.Database): void {
 Create `apps/service/src/db/client.ts`:
 
 ```ts
-import Database from "better-sqlite3";
+import { DatabaseSync } from "node:sqlite";
 import { mkdirSync } from "node:fs";
 import { join } from "node:path";
 import { DEFAULT_DATA_ROOT } from "../config.js";
 import { applySchema } from "./schema.js";
 
-export function openAgeDatabase(dataRoot = DEFAULT_DATA_ROOT): Database.Database {
+export function openAgeDatabase(dataRoot = DEFAULT_DATA_ROOT): DatabaseSync {
   const dataDir = join(dataRoot, "data");
   const exportsDir = join(dataRoot, "exports");
   const equipmentDir = join(dataRoot, "equipment");
@@ -435,7 +433,7 @@ export function openAgeDatabase(dataRoot = DEFAULT_DATA_ROOT): Database.Database
     mkdirSync(dir, { recursive: true });
   }
 
-  const db = new Database(join(dataDir, "age-fx.sqlite"));
+  const db = new DatabaseSync(join(dataDir, "age-fx.sqlite"));
   applySchema(db);
   return db;
 }
@@ -446,7 +444,7 @@ export function openAgeDatabase(dataRoot = DEFAULT_DATA_ROOT): Database.Database
 Create `apps/service/src/messages/messageRepository.ts`:
 
 ```ts
-import type Database from "better-sqlite3";
+import type { DatabaseSync } from "node:sqlite";
 import type { MessageRole, MessageSource } from "../hash.js";
 
 export interface CapturedMessageInput {
@@ -465,7 +463,7 @@ export interface CapturedMessageRecord extends CapturedMessageInput {
 }
 
 export function insertCapturedMessage(
-  db: Database.Database,
+  db: DatabaseSync,
   message: CapturedMessageInput
 ): { inserted: boolean } {
   const result = db.prepare(`
@@ -494,7 +492,7 @@ export function insertCapturedMessage(
 }
 
 export function listMessagesForDate(
-  db: Database.Database,
+  db: DatabaseSync,
   conversationDate: string
 ): CapturedMessageRecord[] {
   const rows = db.prepare(`
@@ -625,7 +623,7 @@ Create `apps/service/src/server.ts`:
 ```ts
 import cors from "cors";
 import express from "express";
-import type Database from "better-sqlite3";
+import type { DatabaseSync } from "node:sqlite";
 import { z } from "zod";
 import { listMessagesForDate, insertCapturedMessage } from "./messages/messageRepository.js";
 
@@ -644,7 +642,7 @@ const captureSchema = z.object({
   messages: z.array(capturedMessageSchema).min(1)
 });
 
-export function createServer(db: Database.Database, dataRoot: string) {
+export function createServer(db: DatabaseSync, dataRoot: string) {
   const app = express();
   app.use(cors({ origin: true }));
   app.use(express.json({ limit: "2mb" }));
@@ -979,7 +977,7 @@ describe("equipment repository", () => {
 Create `apps/service/src/equipment/equipmentRepository.ts`:
 
 ```ts
-import type Database from "better-sqlite3";
+import type { DatabaseSync } from "node:sqlite";
 import type { EquipmentRecommendation } from "../analysis/analyzer.js";
 
 export type EquipmentState = "recommended" | "approved" | "printed" | "archived";
@@ -1010,7 +1008,7 @@ function mapRow(row: Record<string, unknown>): EquipmentItem {
 }
 
 export function createEquipmentRecommendation(
-  db: Database.Database,
+  db: DatabaseSync,
   analysisDate: string,
   recommendation: EquipmentRecommendation
 ): EquipmentItem {
@@ -1051,7 +1049,7 @@ export function createEquipmentRecommendation(
   return getEquipmentItem(db, Number(result.lastInsertRowid));
 }
 
-export function getEquipmentItem(db: Database.Database, id: number): EquipmentItem {
+export function getEquipmentItem(db: DatabaseSync, id: number): EquipmentItem {
   const row = db.prepare(`
     SELECT
       id,
@@ -1075,7 +1073,7 @@ export function getEquipmentItem(db: Database.Database, id: number): EquipmentIt
 }
 
 export function updateEquipmentState(
-  db: Database.Database,
+  db: DatabaseSync,
   id: number,
   state: EquipmentState
 ): EquipmentItem {
@@ -1088,7 +1086,7 @@ export function updateEquipmentState(
   return getEquipmentItem(db, id);
 }
 
-export function listEquipmentItems(db: Database.Database): EquipmentItem[] {
+export function listEquipmentItems(db: DatabaseSync): EquipmentItem[] {
   const rows = db.prepare(`
     SELECT
       id,
