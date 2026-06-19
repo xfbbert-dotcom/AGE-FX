@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { renderAnalysis } from "../src/main.js";
+import { renderAnalysis, todayIsoDate } from "../src/main.js";
 
 describe("console rendering", () => {
   it("renders the battle title and recommended equipment name", () => {
@@ -30,5 +30,12 @@ describe("console rendering", () => {
 
     expect(document.body.textContent).toContain("Daily battle for 2026-06-19");
     expect(document.body.textContent).toContain("Lake Blue Concept Card");
+  });
+
+  it("formats today from the local calendar date instead of UTC", () => {
+    const shanghaiEarlyMorning = new Date(2026, 0, 1, 1, 30, 0);
+
+    expect(todayIsoDate(shanghaiEarlyMorning)).toBe("2026-01-01");
+    expect(shanghaiEarlyMorning.toISOString().slice(0, 10)).toBe("2025-12-31");
   });
 });
