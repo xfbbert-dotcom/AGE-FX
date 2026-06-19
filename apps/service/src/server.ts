@@ -2,6 +2,12 @@ import type { DatabaseSync } from "node:sqlite";
 import cors from "cors";
 import express from "express";
 import { z } from "zod";
+import { analyzeDailyBattle } from "./analysis/analyzer.js";
+import {
+  createEquipmentRecommendation,
+  listEquipmentItems,
+  updateEquipmentState
+} from "./equipment/equipmentRepository.js";
 import {
   insertCapturedMessage,
   listMessagesForDate
@@ -69,6 +75,19 @@ const capturePayloadSchema = z.object({
   messages: z.array(capturedMessageSchema).min(1)
 });
 
+const analyzePayloadSchema = z.object({
+  date: z
+    .string()
+    .refine(isCalendarDate, {
+      message: "Invalid calendar date"
+    })
+    .optional()
+});
+
+const equipmentStateSchema = z.object({
+  state: z.enum(["recommended", "approved", "printed", "archived"])
+});
+
 function todayIsoDate(): string {
   return new Date().toISOString().slice(0, 10);
 }
@@ -134,6 +153,46 @@ export function createServer(db: DatabaseSync, dataRoot: string): express.Expres
     }
 
     res.json({ inserted, duplicates });
+  });
+
+  app.post("/api/analyze", (req, res) => {
+    const parsedPayload = analyzePayloadSchema.safeParse(req.body ?? {});
+
+    if (!parsedPayload.success) {
+      res.status(400).json({
+        error: "invalid_analyze_payload",
+        details: parsedPayload.error.issues
+      });
+      return;
+    }
+
+    const date = parsedPayload.data.date ?? todayIsoDate();
+    const messages = listMessagesForDate(db, date);
+    const analysis = analyzeDailyBattle(date, messages);
+    const equipment = createEquipmentRecommendation(
+      db,
+      date,
+      analysis.recommendedEquipment[0]
+    );
+
+    res.json({ analysis, equipment });
+  });
+
+  app.get("/api/equipment", (_req, res) => {
+    res.json({ items: listEquipmentItems(db) });
+  });
+
+  app.patch("/api/equipment/:id/state", (req, res) => {
+    const parsedPayload = equipmentStateSchema.safeParse(req.body);
+
+    if (!parsedPayload.success) {
+      res.status(400).json({ error: "invalid_equipment_state" });
+      return;
+    }
+
+    const item = updateEquipmentState(db, Number(req.params.id), parsedPayload.data.state);
+
+    res.json({ item });
   });
 
   return app;

@@ -5,6 +5,7 @@ import type { DatabaseSync } from "node:sqlite";
 import request from "supertest";
 import { afterEach, describe, expect, it } from "vitest";
 import { openAgeDatabase } from "../src/db/client.js";
+import { createContentHash } from "../src/hash.js";
 import { createServer } from "../src/server.js";
 
 const validContentHash =
@@ -148,6 +149,77 @@ describe("local companion service API", () => {
       .expect(500)
       .expect(({ body }) => {
         expect(body).toEqual({ error: "capture_store_failed" });
+      });
+  });
+
+  it("analyzes a captured day and lists recommended equipment", async () => {
+    const app = createTestApp();
+    const message = {
+      source: "chatgpt",
+      capturedAt: "2026-06-19T12:34:56.000Z",
+      conversationDate: "2026-06-19",
+      conversationTitle: "AGE-FX planning",
+      pageUrl: "https://chatgpt.com/c/example",
+      messageRole: "user",
+      messageText: "Could this tool idea become a Lake Blue Concept Card?",
+      contentHash: createContentHash({
+        source: "chatgpt",
+        pageUrl: "https://chatgpt.com/c/example",
+        messageRole: "user",
+        messageText: "Could this tool idea become a Lake Blue Concept Card?"
+      })
+    };
+
+    await request(app).post("/api/capture").send({ messages: [message] }).expect(200);
+
+    await request(app)
+      .post("/api/analyze")
+      .send({ date: "2026-06-19" })
+      .expect(200)
+      .expect(({ body }) => {
+        expect(body.analysis.recommendedEquipment).toHaveLength(1);
+        expect(body.equipment).toMatchObject({
+          analysisDate: "2026-06-19",
+          equipmentName: "Lake Blue Concept Card",
+          state: "recommended"
+        });
+      });
+
+    await request(app)
+      .get("/api/equipment")
+      .expect(200)
+      .expect(({ body }) => {
+        expect(body.items).toEqual([
+          expect.objectContaining({
+            equipmentName: "Lake Blue Concept Card",
+            state: "recommended"
+          })
+        ]);
+      });
+  });
+
+  it("validates and updates equipment state", async () => {
+    const app = createTestApp();
+
+    await request(app).post("/api/analyze").send({ date: "2026-06-19" }).expect(200);
+
+    await request(app)
+      .patch("/api/equipment/1/state")
+      .send({ state: "missing" })
+      .expect(400)
+      .expect(({ body }) => {
+        expect(body).toEqual({ error: "invalid_equipment_state" });
+      });
+
+    await request(app)
+      .patch("/api/equipment/1/state")
+      .send({ state: "approved" })
+      .expect(200)
+      .expect(({ body }) => {
+        expect(body.item).toMatchObject({
+          id: 1,
+          state: "approved"
+        });
       });
   });
 });
