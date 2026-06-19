@@ -473,7 +473,7 @@ Expected: FAIL because database modules do not exist.
 Create `apps/service/src/config.ts`:
 
 ```ts
-export const DEFAULT_DATA_ROOT = "D:\\\\AGE-FX-Thought-Console";
+export const DEFAULT_DATA_ROOT = "D:\\AGE-FX-Thought-Console";
 export const DEFAULT_SERVICE_PORT = 3987;
 ```
 
