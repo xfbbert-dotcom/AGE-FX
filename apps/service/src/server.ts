@@ -92,6 +92,16 @@ function todayIsoDate(): string {
   return new Date().toISOString().slice(0, 10);
 }
 
+function parsePositiveInteger(value: string): number | null {
+  if (!/^[1-9]\d*$/.test(value)) {
+    return null;
+  }
+
+  const parsedValue = Number(value);
+
+  return Number.isSafeInteger(parsedValue) ? parsedValue : null;
+}
+
 export function createServer(db: DatabaseSync, dataRoot: string): express.Express {
   const app = express();
 
@@ -190,9 +200,25 @@ export function createServer(db: DatabaseSync, dataRoot: string): express.Expres
       return;
     }
 
-    const item = updateEquipmentState(db, Number(req.params.id), parsedPayload.data.state);
+    const equipmentId = parsePositiveInteger(req.params.id);
 
-    res.json({ item });
+    if (equipmentId === null) {
+      res.status(400).json({ error: "invalid_equipment_id" });
+      return;
+    }
+
+    try {
+      const item = updateEquipmentState(db, equipmentId, parsedPayload.data.state);
+
+      res.json({ item });
+    } catch (error) {
+      if (error instanceof Error && error.message.startsWith("equipment_item_not_found:")) {
+        res.status(404).json({ error: "equipment_item_not_found" });
+        return;
+      }
+
+      throw error;
+    }
   });
 
   return app;

@@ -222,4 +222,28 @@ describe("local companion service API", () => {
         });
       });
   });
+
+  it("returns 400 when equipment id is malformed", async () => {
+    const app = createTestApp();
+
+    await request(app)
+      .patch("/api/equipment/not-a-number/state")
+      .send({ state: "approved" })
+      .expect(400)
+      .expect(({ body }) => {
+        expect(body).toEqual({ error: "invalid_equipment_id" });
+      });
+  });
+
+  it("returns 404 when equipment item is missing", async () => {
+    const app = createTestApp();
+
+    await request(app)
+      .patch("/api/equipment/999/state")
+      .send({ state: "approved" })
+      .expect(404)
+      .expect(({ body }) => {
+        expect(body).toEqual({ error: "equipment_item_not_found" });
+      });
+  });
 });
