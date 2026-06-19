@@ -117,4 +117,12 @@ describe("Edge extension content capture", () => {
     expect(contentSource).not.toMatch(/\bfrom\s+["']node:/);
     expect(contentSource).not.toMatch(/\brequire\s*\(/);
   });
+
+  it("relays capture through the extension runtime instead of fetching localhost directly", () => {
+    const contentSource = readFileSync(resolve("extension/edge/src/content.js"), "utf8");
+
+    expect(contentSource).toContain("chrome.runtime");
+    expect(contentSource).toContain(".sendMessage");
+    expect(contentSource).not.toContain("/api/capture");
+  });
 });

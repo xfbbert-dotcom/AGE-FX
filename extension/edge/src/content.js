@@ -1,6 +1,6 @@
 (function (root) {
-  const CAPTURE_ENDPOINT = "http://127.0.0.1:3987/api/capture";
   const CAPTURE_INTERVAL_MS = 5000;
+  const CAPTURE_MESSAGE_TYPE = "AGE_FX_CAPTURE";
   const INDICATOR_ID = "age-fx-capture-indicator";
   const sentHashes = new Set();
 
@@ -274,6 +274,28 @@
     return unsent;
   }
 
+  function sendCaptureMessage(messages, runtime) {
+    const activeRuntime =
+      runtime ?? (typeof chrome !== "undefined" ? chrome.runtime : root.chrome?.runtime);
+
+    if (!activeRuntime?.sendMessage) {
+      return Promise.resolve({ ok: false, error: "Extension runtime unavailable" });
+    }
+
+    return new Promise((resolve) => {
+      activeRuntime.sendMessage({ type: CAPTURE_MESSAGE_TYPE, messages }, (response) => {
+        const runtimeError = activeRuntime.lastError;
+
+        if (runtimeError) {
+          resolve({ ok: false, error: runtimeError.message ?? String(runtimeError) });
+          return;
+        }
+
+        resolve(response ?? { ok: false, error: "No capture response" });
+      });
+    });
+  }
+
   function ensureIndicator() {
     if (!root.document?.body) {
       return null;
@@ -331,33 +353,21 @@
     }
 
     setIndicatorState("armed");
-    const messages = filterUnsentMessages(await extractVisibleMessages(pageUrl));
+    const messages = filterUnsentMessages(await extractVisibleMessages(pageUrl), new Set(sentHashes));
 
     if (messages.length === 0) {
       return;
     }
 
-    try {
-      const response = await root.fetch(CAPTURE_ENDPOINT, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ messages })
-      });
+    const response = await sendCaptureMessage(messages);
 
-      if (!response.ok) {
-        for (const message of messages) {
-          sentHashes.delete(message.contentHash);
-        }
-      }
-
-      setIndicatorState(response.ok ? "captured" : "offline");
-    } catch {
+    if (response.ok) {
       for (const message of messages) {
-        sentHashes.delete(message.contentHash);
+        sentHashes.add(message.contentHash);
       }
-
-      setIndicatorState("offline");
     }
+
+    setIndicatorState(response.ok ? "captured" : "offline");
   }
 
   function startCaptureLoop() {
@@ -377,6 +387,7 @@
     filterUnsentMessages,
     formatLocalDate,
     normalizeMessageText,
+    sendCaptureMessage,
     sentHashes,
     sha256Hex,
     startCaptureLoop

@@ -37,7 +37,8 @@ Node 24's built-in `node:sqlite` / `DatabaseSync` currently emits `ExperimentalW
 - `apps/console/src/styles.css`: lake-blue cockpit UI and FX Burst Mode.
 - `apps/console/tests/*.test.ts`: console rendering tests.
 - `extension/edge/manifest.json`: Microsoft Edge Manifest V3 definition.
-- `extension/edge/src/content.js`: ChatGPT/Gemini visible-message capture.
+- `extension/edge/src/content.js`: ChatGPT/Gemini visible-message capture and runtime relay trigger.
+- `extension/edge/src/background.js`: Manifest V3 service worker that posts captures to the local service.
 - `extension/edge/src/popup.js`: capture status popup.
 - `extension/edge/src/popup.html`: popup markup.
 - `extension/edge/src/styles.css`: extension capture indicator and popup styles.
@@ -1887,7 +1888,7 @@ Create `extension/edge/src/content.js`:
 const validSources = new Set(["chatgpt", "gemini"]);
 const validRoles = new Set(["user", "assistant", "unknown"]);
 
-const serviceUrl = "http://127.0.0.1:3987";
+const CAPTURE_MESSAGE_TYPE = "AGE_FX_CAPTURE";
 const sentHashes = new Set();
 
 export function normalizeMessageText(text) {
@@ -1984,26 +1985,40 @@ async function captureNow() {
     return;
   }
 
-  const response = await fetch(`${serviceUrl}/api/capture`, {
+  chrome.runtime.sendMessage({ type: CAPTURE_MESSAGE_TYPE, messages }, (response) => {
+    if (response?.ok) {
+      for (const message of messages) sentHashes.add(message.contentHash);
+      showIndicator(`C-Funnels captured ${messages.length}`);
+    } else {
+      showIndicator("C-Funnels offline");
+    }
+  });
+}
+```
+
+Create `extension/edge/src/background.js`:
+
+```js
+const CAPTURE_ENDPOINT = "http://127.0.0.1:3987/api/capture";
+
+export async function postCapture(messages, fetchImpl = fetch) {
+  const response = await fetchImpl(CAPTURE_ENDPOINT, {
     method: "POST",
-    headers: { "content-type": "application/json" },
+    headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ messages })
   });
 
-  if (response.ok) {
-    for (const message of messages) sentHashes.add(message.contentHash);
-    showIndicator(`C-Funnels captured ${messages.length}`);
-  } else {
-    showIndicator("C-Funnels offline");
-  }
+  if (!response.ok) return { ok: false, error: `Capture failed: ${response.status}` };
+
+  const payload = await response.json();
+  return { ok: true, inserted: payload.inserted ?? 0, duplicates: payload.duplicates ?? 0 };
 }
 
-if (typeof location !== "undefined" && detectSource(location.href)) {
-  setInterval(() => {
-    captureNow().catch(() => showIndicator("C-Funnels offline"));
-  }, 4000);
-  captureNow().catch(() => showIndicator("C-Funnels offline"));
-}
+chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {
+  if (message?.type !== "AGE_FX_CAPTURE") return false;
+  postCapture(message.messages).then(sendResponse);
+  return true;
+});
 ```
 
 - [ ] **Step 5: Create Edge manifest and popup**
@@ -2022,6 +2037,9 @@ Create `extension/edge/manifest.json`:
     "https://chatgpt.com/*",
     "https://gemini.google.com/*"
   ],
+  "background": {
+    "service_worker": "src/background.js"
+  },
   "content_scripts": [
     {
       "matches": ["https://chatgpt.com/*", "https://gemini.google.com/*"],
