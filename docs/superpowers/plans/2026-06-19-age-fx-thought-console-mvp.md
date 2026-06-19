@@ -669,55 +669,154 @@ Create `apps/service/tests/server.test.ts`:
 import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import type { DatabaseSync } from "node:sqlite";
 import request from "supertest";
+import { afterEach, describe, expect, it } from "vitest";
 import { openAgeDatabase } from "../src/db/client.js";
 import { createServer } from "../src/server.js";
 
-let root: string;
+const validContentHash =
+  "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef";
 
-beforeEach(() => {
-  root = mkdtempSync(join(tmpdir(), "age-fx-api-"));
-});
+describe("local companion service API", () => {
+  let tempRoot: string | undefined;
+  let db: DatabaseSync | undefined;
 
-afterEach(() => {
-  rmSync(root, { recursive: true, force: true });
-});
+  afterEach(() => {
+    db?.close();
+    db = undefined;
 
-describe("local companion service", () => {
-  it("accepts captured messages and reports duplicate count", async () => {
-    const db = openAgeDatabase(root);
-    const app = createServer(db, root);
-    const payload = {
-      messages: [{
-        source: "chatgpt",
-        capturedAt: "2026-06-19T08:00:00.000Z",
-        conversationDate: "2026-06-19",
-        conversationTitle: "AGE system",
-        pageUrl: "https://chatgpt.com/c/age",
-        messageRole: "user",
-        messageText: "I like AGE-FX",
-        contentHash: "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef"
-      }]
-    };
-
-    const first = await request(app).post("/api/capture").send(payload);
-    const second = await request(app).post("/api/capture").send(payload);
-
-    expect(first.body).toEqual({ inserted: 1, duplicates: 0 });
-    expect(second.body).toEqual({ inserted: 0, duplicates: 1 });
+    if (tempRoot) {
+      rmSync(tempRoot, { force: true, recursive: true });
+      tempRoot = undefined;
+    }
   });
 
-  it("returns today's capture status", async () => {
-    const db = openAgeDatabase(root);
-    const app = createServer(db, root);
-    const response = await request(app).get("/api/status?date=2026-06-19");
-    expect(response.body).toEqual({
-      ok: true,
-      dataRoot: root,
-      date: "2026-06-19",
-      capturedMessages: 0
-    });
+  function createTestApp() {
+    tempRoot = mkdtempSync(join(tmpdir(), "age-fx-api-"));
+    db = openAgeDatabase(tempRoot);
+
+    return createServer(db, tempRoot);
+  }
+
+  it("captures a message once and reports duplicate content hashes", async () => {
+    const app = createTestApp();
+    const payload = {
+      messages: [
+        {
+          source: "chatgpt",
+          capturedAt: "2026-06-19T12:34:56.000Z",
+          conversationDate: "2026-06-19",
+          conversationTitle: null,
+          pageUrl: "https://chatgpt.com/c/example",
+          messageRole: "user",
+          messageText: "A captured thought for AGE-FX",
+          contentHash: validContentHash
+        }
+      ]
+    };
+
+    await request(app)
+      .post("/api/capture")
+      .send(payload)
+      .expect(200)
+      .expect(({ body }) => {
+        expect(body).toEqual({ inserted: 1, duplicates: 0 });
+      });
+
+    await request(app)
+      .post("/api/capture")
+      .send(payload)
+      .expect(200)
+      .expect(({ body }) => {
+        expect(body).toEqual({ inserted: 0, duplicates: 1 });
+      });
+  });
+
+  it("reports status for a date with no captured messages", async () => {
+    const app = createTestApp();
+
+    await request(app)
+      .get("/api/status")
+      .query({ date: "2026-06-19" })
+      .expect(200)
+      .expect(({ body }) => {
+        expect(body).toEqual({
+          ok: true,
+          dataRoot: tempRoot,
+          date: "2026-06-19",
+          capturedMessages: 0
+        });
+      });
+  });
+
+  it("does not reflect disallowed CORS origins", async () => {
+    const app = createTestApp();
+
+    await request(app)
+      .get("/api/health")
+      .set("Origin", "https://evil.example")
+      .expect(200)
+      .expect((response) => {
+        expect(response.headers["access-control-allow-origin"]).toBeUndefined();
+      });
+  });
+
+  it("returns 400 for invalid capture payload fields", async () => {
+    const app = createTestApp();
+    const invalidPayload = {
+      messages: [
+        {
+          source: "chatgpt",
+          capturedAt: "not-an-iso-date",
+          conversationDate: "2026-02-30",
+          conversationTitle: null,
+          pageUrl: "https://gemini.google.com/app/example",
+          messageRole: "user",
+          messageText: "A captured thought for AGE-FX",
+          contentHash: "not-a-sha256"
+        }
+      ]
+    };
+
+    await request(app)
+      .post("/api/capture")
+      .send(invalidPayload)
+      .expect(400)
+      .expect(({ body }) => {
+        expect(body.error).toBe("invalid_capture_payload");
+        expect(Array.isArray(body.details)).toBe(true);
+      });
+  });
+
+  it("returns 500 when valid capture payload cannot be stored", async () => {
+    const app = createTestApp();
+    const payload = {
+      messages: [
+        {
+          source: "gemini",
+          capturedAt: "2026-06-19T12:34:56.000Z",
+          conversationDate: "2026-06-19",
+          conversationTitle: "AGE-FX planning",
+          pageUrl: "https://gemini.google.com/app/example",
+          messageRole: "assistant",
+          messageText: "A stored reply from Gemini",
+          contentHash:
+            "abcdef0123456789abcdef0123456789abcdef0123456789abcdef0123456789"
+        }
+      ]
+    };
+
+    db?.close();
+    db = undefined;
+
+    await request(app)
+      .post("/api/capture")
+      .send(payload)
+      .expect(500)
+      .expect(({ body }) => {
+        expect(body).toEqual({ error: "capture_store_failed" });
+      });
   });
 });
 ```
@@ -737,11 +836,14 @@ Expected: FAIL because `createServer` does not exist.
 Create `apps/service/src/server.ts`:
 
 ```ts
+import type { DatabaseSync } from "node:sqlite";
 import cors from "cors";
 import express from "express";
-import type { DatabaseSync } from "node:sqlite";
 import { z } from "zod";
-import { listMessagesForDate, insertCapturedMessage } from "./messages/messageRepository.js";
+import {
+  insertCapturedMessage,
+  listMessagesForDate
+} from "./messages/messageRepository.js";
 
 const allowedWebOrigins = new Set([
   "http://127.0.0.1:5173",
@@ -751,14 +853,24 @@ const extensionOriginPattern = /^(?:chrome-extension|extension):\/\/[a-z0-9_-]+$
 const sha256HexPattern = /^[a-f0-9]{64}$/i;
 
 function isAllowedCorsOrigin(origin: string | undefined): boolean {
-  if (origin === undefined) return true;
+  if (origin === undefined) {
+    return true;
+  }
+
   return allowedWebOrigins.has(origin) || extensionOriginPattern.test(origin);
 }
 
 function isCalendarDate(value: string): boolean {
-  if (!/^\d{4}-\d{2}-\d{2}$/.test(value)) return false;
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(value)) {
+    return false;
+  }
+
   const parsedDate = new Date(`${value}T00:00:00.000Z`);
-  return !Number.isNaN(parsedDate.getTime()) && parsedDate.toISOString().slice(0, 10) === value;
+
+  return (
+    !Number.isNaN(parsedDate.getTime()) &&
+    parsedDate.toISOString().slice(0, 10) === value
+  );
 }
 
 function hostMatchesSource(source: "chatgpt" | "gemini", pageUrl: string): boolean {
@@ -767,36 +879,47 @@ function hostMatchesSource(source: "chatgpt" | "gemini", pageUrl: string): boole
   return host === expectedHost || host.endsWith(`.${expectedHost}`);
 }
 
-const capturedMessageSchema = z.object({
-  source: z.enum(["chatgpt", "gemini"]),
-  capturedAt: z.string().datetime({ offset: true }),
-  conversationDate: z.string().refine(isCalendarDate),
-  conversationTitle: z.string().nullable(),
-  pageUrl: z.string().url(),
-  messageRole: z.enum(["user", "assistant", "unknown"]),
-  messageText: z.string().min(1),
-  contentHash: z.string().regex(sha256HexPattern)
-}).superRefine((message, context) => {
-  if (!hostMatchesSource(message.source, message.pageUrl)) {
-    context.addIssue({
-      code: z.ZodIssueCode.custom,
-      message: "pageUrl host must match source",
-      path: ["pageUrl"]
-    });
-  }
-});
+const capturedMessageSchema = z
+  .object({
+    source: z.enum(["chatgpt", "gemini"]),
+    capturedAt: z.string().datetime({ offset: true }),
+    conversationDate: z.string().refine(isCalendarDate, {
+      message: "Invalid calendar date"
+    }),
+    conversationTitle: z.string().nullable(),
+    pageUrl: z.string().url(),
+    messageRole: z.enum(["user", "assistant", "unknown"]),
+    messageText: z.string().min(1),
+    contentHash: z.string().regex(sha256HexPattern)
+  })
+  .superRefine((message, context) => {
+    if (!hostMatchesSource(message.source, message.pageUrl)) {
+      context.addIssue({
+        code: z.ZodIssueCode.custom,
+        message: "pageUrl host must match source",
+        path: ["pageUrl"]
+      });
+    }
+  });
 
-const captureSchema = z.object({
+const capturePayloadSchema = z.object({
   messages: z.array(capturedMessageSchema).min(1)
 });
 
-export function createServer(db: DatabaseSync, dataRoot: string) {
+function todayIsoDate(): string {
+  return new Date().toISOString().slice(0, 10);
+}
+
+export function createServer(db: DatabaseSync, dataRoot: string): express.Express {
   const app = express();
-  app.use(cors({
-    origin(origin, callback) {
-      callback(null, isAllowedCorsOrigin(origin));
-    }
-  }));
+
+  app.use(
+    cors({
+      origin(origin, callback) {
+        callback(null, isAllowedCorsOrigin(origin));
+      }
+    })
+  );
   app.use(express.json({ limit: "2mb" }));
 
   app.get("/api/health", (_req, res) => {
@@ -804,10 +927,12 @@ export function createServer(db: DatabaseSync, dataRoot: string) {
   });
 
   app.get("/api/status", (req, res) => {
-    const date = typeof req.query.date === "string"
-      ? req.query.date
-      : new Date().toISOString().slice(0, 10);
+    const date =
+      typeof req.query.date === "string" && req.query.date.length > 0
+        ? req.query.date
+        : todayIsoDate();
     const messages = listMessagesForDate(db, date);
+
     res.json({
       ok: true,
       dataRoot,
@@ -817,25 +942,35 @@ export function createServer(db: DatabaseSync, dataRoot: string) {
   });
 
   app.post("/api/capture", (req, res) => {
-    const parsed = captureSchema.safeParse(req.body);
-    if (!parsed.success) {
-      res.status(400).json({ error: "invalid_capture_payload", details: parsed.error.flatten() });
+    const parsedPayload = capturePayloadSchema.safeParse(req.body);
+
+    if (!parsedPayload.success) {
+      res.status(400).json({
+        error: "invalid_capture_payload",
+        details: parsedPayload.error.issues
+      });
       return;
     }
 
-    try {
-      let inserted = 0;
-      let duplicates = 0;
-      for (const message of parsed.data.messages) {
-        const result = insertCapturedMessage(db, message);
-        if (result.inserted) inserted += 1;
-        else duplicates += 1;
-      }
+    let inserted = 0;
+    let duplicates = 0;
 
-      res.json({ inserted, duplicates });
+    try {
+      for (const message of parsedPayload.data.messages) {
+        const result = insertCapturedMessage(db, message);
+
+        if (result.inserted) {
+          inserted += 1;
+        } else {
+          duplicates += 1;
+        }
+      }
     } catch {
       res.status(500).json({ error: "capture_store_failed" });
+      return;
     }
+
+    res.json({ inserted, duplicates });
   });
 
   return app;
@@ -855,17 +990,21 @@ const db = openAgeDatabase(dataRoot);
 const app = createServer(db, dataRoot);
 
 app.listen(port, "127.0.0.1", () => {
-  console.log(`AGE-FX local companion service listening on http://127.0.0.1:${port}`);
+  console.log(`AGE-FX companion service listening at http://127.0.0.1:${port}`);
   console.log(`AGE-FX data root: ${dataRoot}`);
 });
 
 function parseServicePort(portValue: string | undefined): number {
   const rawPort = portValue ?? String(DEFAULT_SERVICE_PORT);
   const port = Number(rawPort);
+
   if (!/^\d+$/.test(rawPort) || !Number.isInteger(port) || port < 1 || port > 65535) {
-    console.error(`Invalid PORT "${rawPort}". AGE-FX service PORT must be an integer from 1 to 65535.`);
+    console.error(
+      `Invalid PORT "${rawPort}". AGE-FX service PORT must be an integer from 1 to 65535.`
+    );
     process.exit(1);
   }
+
   return port;
 }
 ```
@@ -891,7 +1030,7 @@ npm run service
 Expected: output includes:
 
 ```text
-AGE-FX local companion service listening on http://127.0.0.1:3987
+AGE-FX companion service listening at http://127.0.0.1:3987
 AGE-FX data root: D:\AGE-FX-Thought-Console
 ```
 
