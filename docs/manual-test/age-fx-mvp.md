@@ -30,6 +30,8 @@ Open the Vite URL shown in the terminal, usually `http://127.0.0.1:5173/`.
 Verify:
 
 - The AGE-FX console loads.
+- The top status area shows the active data root, usually `D:\AGE-FX-Thought-Console`.
+- The top status area shows today's captured message count.
 - If no messages have been captured today, the console shows the empty-day analysis state.
 - The FX Burst button changes the console layout into the focused review mode.
 
@@ -60,13 +62,22 @@ D:\work\AGE-FX\dist\edge-extension
 
 With `npm run service` still running, open the extension popup. It should report that the local AGE service is online.
 
+If the popup or capture requests are blocked by CORS after Edge assigns an extension ID, copy the extension ID from `edge://extensions`, restart the service with the exact origin, and retry:
+
+```powershell
+$env:AGE_FX_EXTENSION_ORIGINS="chrome-extension://<edge-extension-id>"
+npm run service
+```
+
+For temporary local extension debugging only, `AGE_FX_ALLOW_ANY_EXTENSION_ORIGIN=1` allows any Chromium extension origin.
+
 ## 5. Verify Capture and Analysis
 
 1. In Edge, open a ChatGPT or Gemini conversation.
 2. Confirm the lake-blue C-Funnels capture indicator appears on the page.
 3. Wait briefly for visible messages to be captured.
 4. Check the extension popup or service state for captured message status.
-5. Return to the console and confirm captured messages appear in today's status.
+5. Return to the console and confirm the data root and captured message count appear in today's top status area.
 6. Confirm the daily analysis and equipment recommendation render in the console.
 
 Known MVP behavior: `/api/analyze` currently creates a recommendation record when the console loads analysis. Reloading the console can create duplicate recommendation records.

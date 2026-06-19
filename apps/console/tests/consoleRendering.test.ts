@@ -5,30 +5,22 @@ describe("console rendering", () => {
   it("renders the battle title and recommended equipment name", () => {
     document.body.innerHTML = `<main id="app"></main>`;
 
-    renderAnalysis({
-      analysisDate: "2026-06-19",
-      thoughtTitle: "Daily battle for 2026-06-19",
-      coreThemes: ["Lake-blue cockpit flow"],
-      repeatedQuestions: ["How should FX Burst focus the console?"],
-      newlyFormedJudgments: ["I need a practical local console."],
-      unclosedThinkingLoops: ["Decide tomorrow's equipment minimum version."],
-      reusableMaterial: ["Reusable cockpit panel language"],
-      threadsToContinueTomorrow: ["Continue equipment panel tuning."],
-      recommendedEquipment: [
-        {
-          equipmentName: "Lake Blue Concept Card",
-          equipmentType: "concept_card",
-          whyThisEquipment: "It compresses reusable material into a practical card.",
-          sourceBattleInsight: "Lake-blue cockpit flow",
-          minimumViableVersion: "One printable card with title, why, and next action.",
-          expectedBenefit: "Keeps the next move visible.",
-          printPrompt: "Print a lake-blue concept card.",
-          state: "recommended"
-        }
-      ]
-    });
+    renderAnalysis(createAnalysis());
 
     expect(document.body.textContent).toContain("Daily battle for 2026-06-19");
+    expect(document.body.textContent).toContain("Lake Blue Concept Card");
+  });
+
+  it("renders service data path and captured message count", () => {
+    document.body.innerHTML = `<main id="app"></main>`;
+
+    renderAnalysis(createAnalysis(), {
+      dataRoot: "D:\\AGE-FX-Thought-Console",
+      capturedMessages: 7
+    });
+
+    expect(document.body.textContent).toContain("D:\\AGE-FX-Thought-Console");
+    expect(document.body.textContent).toContain("7 captured messages");
     expect(document.body.textContent).toContain("Lake Blue Concept Card");
   });
 
@@ -69,4 +61,29 @@ describe("console rendering", () => {
     expect(document.querySelector("img")).toBeNull();
     expect(document.body.textContent).toContain(suspiciousText);
   });
+
+  function createAnalysis() {
+    return {
+      analysisDate: "2026-06-19",
+      thoughtTitle: "Daily battle for 2026-06-19",
+      coreThemes: ["Lake-blue cockpit flow"],
+      repeatedQuestions: ["How should FX Burst focus the console?"],
+      newlyFormedJudgments: ["I need a practical local console."],
+      unclosedThinkingLoops: ["Decide tomorrow's equipment minimum version."],
+      reusableMaterial: ["Reusable cockpit panel language"],
+      threadsToContinueTomorrow: ["Continue equipment panel tuning."],
+      recommendedEquipment: [
+        {
+          equipmentName: "Lake Blue Concept Card",
+          equipmentType: "concept_card",
+          whyThisEquipment: "It compresses reusable material into a practical card.",
+          sourceBattleInsight: "Lake-blue cockpit flow",
+          minimumViableVersion: "One printable card with title, why, and next action.",
+          expectedBenefit: "Keeps the next move visible.",
+          printPrompt: "Print a lake-blue concept card.",
+          state: "recommended" as const
+        }
+      ]
+    };
+  }
 });

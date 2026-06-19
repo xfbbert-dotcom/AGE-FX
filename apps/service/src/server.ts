@@ -3,11 +3,13 @@ import cors from "cors";
 import express from "express";
 import { z } from "zod";
 import { analyzeDailyBattle } from "./analysis/analyzer.js";
+import { upsertDailyAnalysis } from "./analysis/analysisRepository.js";
 import {
   createEquipmentRecommendation,
   listEquipmentItems,
   updateEquipmentState
 } from "./equipment/equipmentRepository.js";
+import { createContentHash } from "./hash.js";
 import {
   insertCapturedMessage,
   listMessagesForDate
@@ -20,12 +22,52 @@ const allowedWebOrigins = new Set([
 const extensionOriginPattern = /^(?:chrome-extension|extension):\/\/[a-z0-9_-]+$/i;
 const sha256HexPattern = /^[a-f0-9]{64}$/i;
 
-function isAllowedCorsOrigin(origin: string | undefined): boolean {
+export interface ServerOptions {
+  allowedExtensionOrigins?: string[];
+  allowAnyExtensionOrigin?: boolean;
+}
+
+interface CorsOriginConfig {
+  allowedExtensionOrigins: Set<string>;
+  allowAnyExtensionOrigin: boolean;
+}
+
+function parseAllowedExtensionOrigins(value: string | undefined): string[] {
+  return (value ?? "")
+    .split(",")
+    .map((origin) => origin.trim())
+    .filter((origin) => origin.length > 0);
+}
+
+function createCorsOriginConfig(options: ServerOptions = {}): CorsOriginConfig {
+  return {
+    allowedExtensionOrigins: new Set(
+      options.allowedExtensionOrigins ??
+        parseAllowedExtensionOrigins(process.env.AGE_FX_EXTENSION_ORIGINS)
+    ),
+    allowAnyExtensionOrigin:
+      options.allowAnyExtensionOrigin ??
+      process.env.AGE_FX_ALLOW_ANY_EXTENSION_ORIGIN === "1"
+  };
+}
+
+function isAllowedCorsOrigin(
+  origin: string | undefined,
+  config: CorsOriginConfig
+): boolean {
   if (origin === undefined) {
     return true;
   }
 
-  return allowedWebOrigins.has(origin) || extensionOriginPattern.test(origin);
+  if (allowedWebOrigins.has(origin)) {
+    return true;
+  }
+
+  if (config.allowedExtensionOrigins.has(origin)) {
+    return true;
+  }
+
+  return config.allowAnyExtensionOrigin && extensionOriginPattern.test(origin);
 }
 
 function isCalendarDate(value: string): boolean {
@@ -88,8 +130,12 @@ const equipmentStateSchema = z.object({
   state: z.enum(["recommended", "approved", "printed", "archived"])
 });
 
-function todayIsoDate(): string {
-  return new Date().toISOString().slice(0, 10);
+export function localIsoDate(date = new Date()): string {
+  const year = date.getFullYear();
+  const month = String(date.getMonth() + 1).padStart(2, "0");
+  const day = String(date.getDate()).padStart(2, "0");
+
+  return `${year}-${month}-${day}`;
 }
 
 function parsePositiveInteger(value: string): number | null {
@@ -102,13 +148,18 @@ function parsePositiveInteger(value: string): number | null {
   return Number.isSafeInteger(parsedValue) ? parsedValue : null;
 }
 
-export function createServer(db: DatabaseSync, dataRoot: string): express.Express {
+export function createServer(
+  db: DatabaseSync,
+  dataRoot: string,
+  options: ServerOptions = {}
+): express.Express {
   const app = express();
+  const corsOriginConfig = createCorsOriginConfig(options);
 
   app.use(
     cors({
       origin(origin, callback) {
-        callback(null, isAllowedCorsOrigin(origin));
+        callback(null, isAllowedCorsOrigin(origin, corsOriginConfig));
       }
     })
   );
@@ -122,7 +173,7 @@ export function createServer(db: DatabaseSync, dataRoot: string): express.Expres
     const date =
       typeof req.query.date === "string" && req.query.date.length > 0
         ? req.query.date
-        : todayIsoDate();
+        : localIsoDate();
     const messages = listMessagesForDate(db, date);
 
     res.json({
@@ -149,7 +200,32 @@ export function createServer(db: DatabaseSync, dataRoot: string): express.Expres
 
     try {
       for (const message of parsedPayload.data.messages) {
-        const result = insertCapturedMessage(db, message);
+        const recomputedHash = createContentHash({
+          source: message.source,
+          pageUrl: message.pageUrl,
+          messageRole: message.messageRole,
+          messageText: message.messageText
+        });
+
+        if (message.contentHash.toLowerCase() !== recomputedHash) {
+          res.status(400).json({
+            error: "content_hash_mismatch",
+            details: {
+              suppliedHash: message.contentHash,
+              recomputedHash,
+              source: message.source,
+              pageUrl: message.pageUrl,
+              messageRole: message.messageRole,
+              messageLength: message.messageText.length
+            }
+          });
+          return;
+        }
+
+        const result = insertCapturedMessage(db, {
+          ...message,
+          contentHash: recomputedHash
+        });
 
         if (result.inserted) {
           inserted += 1;
@@ -176,9 +252,10 @@ export function createServer(db: DatabaseSync, dataRoot: string): express.Expres
       return;
     }
 
-    const date = parsedPayload.data.date ?? todayIsoDate();
+    const date = parsedPayload.data.date ?? localIsoDate();
     const messages = listMessagesForDate(db, date);
     const analysis = analyzeDailyBattle(date, messages);
+    upsertDailyAnalysis(db, analysis);
     const equipment = createEquipmentRecommendation(
       db,
       date,

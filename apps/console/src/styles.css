@@ -80,6 +80,35 @@ h2 {
   line-height: 1.45;
 }
 
+.status-strip {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-top: 14px;
+}
+
+.status-metric {
+  min-width: 0;
+  max-width: min(100%, 520px);
+  border: 1px solid rgba(96, 219, 238, 0.24);
+  border-radius: 6px;
+  padding: 8px 10px;
+  color: #d7f3f7;
+  background: rgba(11, 49, 56, 0.62);
+  font-size: 0.82rem;
+  line-height: 1.25;
+  overflow-wrap: anywhere;
+}
+
+.status-metric strong {
+  display: block;
+  margin-bottom: 3px;
+  color: #60dbee;
+  font-size: 0.68rem;
+  letter-spacing: 0;
+  text-transform: uppercase;
+}
+
 .burst-toggle {
   flex: 0 0 auto;
   min-height: 42px;

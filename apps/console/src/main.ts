@@ -29,6 +29,11 @@ interface AnalyzeResponse {
   analysis?: DailyBattleAnalysis;
 }
 
+interface StatusResponse {
+  dataRoot: string;
+  capturedMessages: number;
+}
+
 const serviceUrl = "http://127.0.0.1:3987";
 
 function escapeHtml(value: string): string {
@@ -95,7 +100,32 @@ function renderEquipment(equipment: EquipmentRecommendation | null): string {
   `;
 }
 
-export function renderAnalysis(analysis: DailyBattleAnalysis): void {
+function renderStatus(status: StatusResponse | null): string {
+  if (!status) {
+    return "";
+  }
+
+  const capturedMessagesLabel =
+    status.capturedMessages === 1 ? "1 captured message" : `${status.capturedMessages} captured messages`;
+
+  return `
+    <div class="status-strip" aria-label="Service status">
+      <span class="status-metric">
+        <strong>Data</strong>
+        ${escapeHtml(status.dataRoot)}
+      </span>
+      <span class="status-metric">
+        <strong>Capture</strong>
+        ${escapeHtml(capturedMessagesLabel)}
+      </span>
+    </div>
+  `;
+}
+
+export function renderAnalysis(
+  analysis: DailyBattleAnalysis,
+  status: StatusResponse | null = null
+): void {
   const app = document.querySelector<HTMLElement>("#app");
 
   if (!app) {
@@ -112,6 +142,7 @@ export function renderAnalysis(analysis: DailyBattleAnalysis): void {
         <p class="run-note">
           ${escapeHtml(analysis.analysisDate)} local analysis. Loading this console runs analysis and creates today's recommendation record.
         </p>
+        ${renderStatus(status)}
       </div>
       <button class="burst-toggle" id="burst-toggle" type="button" aria-pressed="false">
         FX Burst
@@ -162,23 +193,32 @@ function renderError(message: string): void {
 }
 
 async function boot(): Promise<void> {
-  const response = await fetch(`${serviceUrl}/api/analyze`, {
-    method: "POST",
-    headers: { "content-type": "application/json" },
-    body: JSON.stringify({ date: todayIsoDate() })
-  });
+  const date = todayIsoDate();
+  const [statusResponse, analyzeResponse] = await Promise.all([
+    fetch(`${serviceUrl}/api/status?date=${encodeURIComponent(date)}`),
+    fetch(`${serviceUrl}/api/analyze`, {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ date })
+    })
+  ]);
 
-  if (!response.ok) {
-    throw new Error(`AGE-FX service returned ${response.status}`);
+  if (!statusResponse.ok) {
+    throw new Error(`AGE-FX status returned ${statusResponse.status}`);
   }
 
-  const payload = (await response.json()) as AnalyzeResponse;
+  if (!analyzeResponse.ok) {
+    throw new Error(`AGE-FX service returned ${analyzeResponse.status}`);
+  }
+
+  const status = (await statusResponse.json()) as StatusResponse;
+  const payload = (await analyzeResponse.json()) as AnalyzeResponse;
 
   if (!payload.analysis) {
     throw new Error("AGE-FX service response did not include analysis.");
   }
 
-  renderAnalysis(payload.analysis);
+  renderAnalysis(payload.analysis, status);
 }
 
 if (typeof window !== "undefined" && document.querySelector("#app")) {
