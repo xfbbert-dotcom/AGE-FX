@@ -1,0 +1,30 @@
+{
+  "manifest_version": 3,
+  "name": "AGE-FX Capture",
+  "version": "0.1.0",
+  "description": "Captures visible ChatGPT and Gemini conversation turns for the AGE-FX Thought Console.",
+  "permissions": ["storage"],
+  "host_permissions": [
+    "http://127.0.0.1:3987/*",
+    "http://localhost:3987/*",
+    "https://chatgpt.com/*",
+    "https://*.chatgpt.com/*",
+    "https://gemini.google.com/*"
+  ],
+  "content_scripts": [
+    {
+      "matches": ["https://chatgpt.com/*", "https://*.chatgpt.com/*"],
+      "js": ["src/content.js"],
+      "run_at": "document_idle"
+    },
+    {
+      "matches": ["https://gemini.google.com/*"],
+      "js": ["src/content.js"],
+      "run_at": "document_idle"
+    }
+  ],
+  "action": {
+    "default_title": "AGE-FX Capture",
+    "default_popup": "src/popup.html"
+  }
+}
