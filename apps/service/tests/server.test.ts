@@ -7,6 +7,9 @@ import { afterEach, describe, expect, it } from "vitest";
 import { openAgeDatabase } from "../src/db/client.js";
 import { createServer } from "../src/server.js";
 
+const validContentHash =
+  "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef";
+
 describe("local companion service API", () => {
   let tempRoot: string | undefined;
   let db: DatabaseSync | undefined;
@@ -40,7 +43,7 @@ describe("local companion service API", () => {
           pageUrl: "https://chatgpt.com/c/example",
           messageRole: "user",
           messageText: "A captured thought for AGE-FX",
-          contentHash: "same-content-hash"
+          contentHash: validContentHash
         }
       ]
     };
@@ -76,6 +79,75 @@ describe("local companion service API", () => {
           date: "2026-06-19",
           capturedMessages: 0
         });
+      });
+  });
+
+  it("does not reflect disallowed CORS origins", async () => {
+    const app = createTestApp();
+
+    await request(app)
+      .get("/api/health")
+      .set("Origin", "https://evil.example")
+      .expect(200)
+      .expect((response) => {
+        expect(response.headers["access-control-allow-origin"]).toBeUndefined();
+      });
+  });
+
+  it("returns 400 for invalid capture payload fields", async () => {
+    const app = createTestApp();
+    const invalidPayload = {
+      messages: [
+        {
+          source: "chatgpt",
+          capturedAt: "not-an-iso-date",
+          conversationDate: "2026-02-30",
+          conversationTitle: null,
+          pageUrl: "https://gemini.google.com/app/example",
+          messageRole: "user",
+          messageText: "A captured thought for AGE-FX",
+          contentHash: "not-a-sha256"
+        }
+      ]
+    };
+
+    await request(app)
+      .post("/api/capture")
+      .send(invalidPayload)
+      .expect(400)
+      .expect(({ body }) => {
+        expect(body.error).toBe("invalid_capture_payload");
+        expect(Array.isArray(body.details)).toBe(true);
+      });
+  });
+
+  it("returns 500 when valid capture payload cannot be stored", async () => {
+    const app = createTestApp();
+    const payload = {
+      messages: [
+        {
+          source: "gemini",
+          capturedAt: "2026-06-19T12:34:56.000Z",
+          conversationDate: "2026-06-19",
+          conversationTitle: "AGE-FX planning",
+          pageUrl: "https://gemini.google.com/app/example",
+          messageRole: "assistant",
+          messageText: "A stored reply from Gemini",
+          contentHash:
+            "abcdef0123456789abcdef0123456789abcdef0123456789abcdef0123456789"
+        }
+      ]
+    };
+
+    db?.close();
+    db = undefined;
+
+    await request(app)
+      .post("/api/capture")
+      .send(payload)
+      .expect(500)
+      .expect(({ body }) => {
+        expect(body).toEqual({ error: "capture_store_failed" });
       });
   });
 });

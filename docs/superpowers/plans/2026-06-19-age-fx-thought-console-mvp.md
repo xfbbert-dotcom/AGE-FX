@@ -697,7 +697,7 @@ describe("local companion service", () => {
         pageUrl: "https://chatgpt.com/c/age",
         messageRole: "user",
         messageText: "I like AGE-FX",
-        contentHash: "hash-1"
+        contentHash: "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef"
       }]
     };
 
@@ -743,15 +743,47 @@ import type { DatabaseSync } from "node:sqlite";
 import { z } from "zod";
 import { listMessagesForDate, insertCapturedMessage } from "./messages/messageRepository.js";
 
+const allowedWebOrigins = new Set([
+  "http://127.0.0.1:5173",
+  "http://localhost:5173"
+]);
+const extensionOriginPattern = /^(?:chrome-extension|extension):\/\/[a-z0-9_-]+$/i;
+const sha256HexPattern = /^[a-f0-9]{64}$/i;
+
+function isAllowedCorsOrigin(origin: string | undefined): boolean {
+  if (origin === undefined) return true;
+  return allowedWebOrigins.has(origin) || extensionOriginPattern.test(origin);
+}
+
+function isCalendarDate(value: string): boolean {
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(value)) return false;
+  const parsedDate = new Date(`${value}T00:00:00.000Z`);
+  return !Number.isNaN(parsedDate.getTime()) && parsedDate.toISOString().slice(0, 10) === value;
+}
+
+function hostMatchesSource(source: "chatgpt" | "gemini", pageUrl: string): boolean {
+  const host = new URL(pageUrl).hostname.toLowerCase();
+  const expectedHost = source === "chatgpt" ? "chatgpt.com" : "gemini.google.com";
+  return host === expectedHost || host.endsWith(`.${expectedHost}`);
+}
+
 const capturedMessageSchema = z.object({
   source: z.enum(["chatgpt", "gemini"]),
-  capturedAt: z.string().min(1),
-  conversationDate: z.string().regex(/^\d{4}-\d{2}-\d{2}$/),
+  capturedAt: z.string().datetime({ offset: true }),
+  conversationDate: z.string().refine(isCalendarDate),
   conversationTitle: z.string().nullable(),
   pageUrl: z.string().url(),
   messageRole: z.enum(["user", "assistant", "unknown"]),
   messageText: z.string().min(1),
-  contentHash: z.string().min(1)
+  contentHash: z.string().regex(sha256HexPattern)
+}).superRefine((message, context) => {
+  if (!hostMatchesSource(message.source, message.pageUrl)) {
+    context.addIssue({
+      code: z.ZodIssueCode.custom,
+      message: "pageUrl host must match source",
+      path: ["pageUrl"]
+    });
+  }
 });
 
 const captureSchema = z.object({
@@ -760,7 +792,11 @@ const captureSchema = z.object({
 
 export function createServer(db: DatabaseSync, dataRoot: string) {
   const app = express();
-  app.use(cors({ origin: true }));
+  app.use(cors({
+    origin(origin, callback) {
+      callback(null, isAllowedCorsOrigin(origin));
+    }
+  }));
   app.use(express.json({ limit: "2mb" }));
 
   app.get("/api/health", (_req, res) => {
@@ -787,15 +823,19 @@ export function createServer(db: DatabaseSync, dataRoot: string) {
       return;
     }
 
-    let inserted = 0;
-    let duplicates = 0;
-    for (const message of parsed.data.messages) {
-      const result = insertCapturedMessage(db, message);
-      if (result.inserted) inserted += 1;
-      else duplicates += 1;
-    }
+    try {
+      let inserted = 0;
+      let duplicates = 0;
+      for (const message of parsed.data.messages) {
+        const result = insertCapturedMessage(db, message);
+        if (result.inserted) inserted += 1;
+        else duplicates += 1;
+      }
 
-    res.json({ inserted, duplicates });
+      res.json({ inserted, duplicates });
+    } catch {
+      res.status(500).json({ error: "capture_store_failed" });
+    }
   });
 
   return app;
@@ -810,7 +850,7 @@ import { openAgeDatabase } from "./db/client.js";
 import { createServer } from "./server.js";
 
 const dataRoot = process.env.AGE_FX_DATA_ROOT ?? DEFAULT_DATA_ROOT;
-const port = Number(process.env.PORT ?? DEFAULT_SERVICE_PORT);
+const port = parseServicePort(process.env.PORT);
 const db = openAgeDatabase(dataRoot);
 const app = createServer(db, dataRoot);
 
@@ -818,6 +858,16 @@ app.listen(port, "127.0.0.1", () => {
   console.log(`AGE-FX local companion service listening on http://127.0.0.1:${port}`);
   console.log(`AGE-FX data root: ${dataRoot}`);
 });
+
+function parseServicePort(portValue: string | undefined): number {
+  const rawPort = portValue ?? String(DEFAULT_SERVICE_PORT);
+  const port = Number(rawPort);
+  if (!/^\d+$/.test(rawPort) || !Number.isInteger(port) || port < 1 || port > 65535) {
+    console.error(`Invalid PORT "${rawPort}". AGE-FX service PORT must be an integer from 1 to 65535.`);
+    process.exit(1);
+  }
+  return port;
+}
 ```
 
 - [ ] **Step 4: Run API tests**

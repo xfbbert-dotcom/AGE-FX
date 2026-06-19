@@ -7,23 +7,66 @@ import {
   listMessagesForDate
 } from "./messages/messageRepository.js";
 
-const isoDateSchema = z.string().regex(/^\d{4}-\d{2}-\d{2}$/);
+const allowedWebOrigins = new Set([
+  "http://127.0.0.1:5173",
+  "http://localhost:5173"
+]);
+const extensionOriginPattern = /^(?:chrome-extension|extension):\/\/[a-z0-9_-]+$/i;
+const sha256HexPattern = /^[a-f0-9]{64}$/i;
+
+function isAllowedCorsOrigin(origin: string | undefined): boolean {
+  if (origin === undefined) {
+    return true;
+  }
+
+  return allowedWebOrigins.has(origin) || extensionOriginPattern.test(origin);
+}
+
+function isCalendarDate(value: string): boolean {
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(value)) {
+    return false;
+  }
+
+  const parsedDate = new Date(`${value}T00:00:00.000Z`);
+
+  return (
+    !Number.isNaN(parsedDate.getTime()) &&
+    parsedDate.toISOString().slice(0, 10) === value
+  );
+}
+
+function hostMatchesSource(source: "chatgpt" | "gemini", pageUrl: string): boolean {
+  const host = new URL(pageUrl).hostname.toLowerCase();
+  const expectedHost = source === "chatgpt" ? "chatgpt.com" : "gemini.google.com";
+
+  return host === expectedHost || host.endsWith(`.${expectedHost}`);
+}
+
+const capturedMessageSchema = z
+  .object({
+    source: z.enum(["chatgpt", "gemini"]),
+    capturedAt: z.string().datetime({ offset: true }),
+    conversationDate: z.string().refine(isCalendarDate, {
+      message: "Invalid calendar date"
+    }),
+    conversationTitle: z.string().nullable(),
+    pageUrl: z.string().url(),
+    messageRole: z.enum(["user", "assistant", "unknown"]),
+    messageText: z.string().min(1),
+    contentHash: z.string().regex(sha256HexPattern)
+  })
+  .superRefine((message, context) => {
+    if (!hostMatchesSource(message.source, message.pageUrl)) {
+      context.addIssue({
+        code: z.ZodIssueCode.custom,
+        message: "pageUrl host must match source",
+        path: ["pageUrl"]
+      });
+    }
+  });
 
 const capturePayloadSchema = z.object({
-  messages: z
-    .array(
-      z.object({
-        source: z.enum(["chatgpt", "gemini"]),
-        capturedAt: z.string().min(1),
-        conversationDate: isoDateSchema,
-        conversationTitle: z.string().nullable(),
-        pageUrl: z.string().url(),
-        messageRole: z.enum(["user", "assistant", "unknown"]),
-        messageText: z.string().min(1),
-        contentHash: z.string().min(1)
-      })
-    )
-    .min(1)
+  messages: z.array(capturedMessageSchema).min(1)
 });
 
 function todayIsoDate(): string {
@@ -33,7 +76,13 @@ function todayIsoDate(): string {
 export function createServer(db: DatabaseSync, dataRoot: string): express.Express {
   const app = express();
 
-  app.use(cors({ origin: true }));
+  app.use(
+    cors({
+      origin(origin, callback) {
+        callback(null, isAllowedCorsOrigin(origin));
+      }
+    })
+  );
   app.use(express.json({ limit: "2mb" }));
 
   app.get("/api/health", (_req, res) => {
