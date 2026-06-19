@@ -1,0 +1,254 @@
+:root {
+  color: #e6fbff;
+  background: #051013;
+  font-family:
+    Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+  font-synthesis: none;
+  text-rendering: optimizeLegibility;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+body {
+  min-width: 320px;
+  min-height: 100vh;
+  margin: 0;
+  background:
+    linear-gradient(180deg, rgba(11, 39, 46, 0.92), rgba(5, 16, 19, 0.98)),
+    #051013;
+}
+
+button {
+  font: inherit;
+}
+
+#app {
+  min-height: 100vh;
+}
+
+.topbar {
+  display: flex;
+  gap: 20px;
+  align-items: center;
+  justify-content: space-between;
+  padding: 22px clamp(16px, 4vw, 34px);
+  border-bottom: 1px solid rgba(96, 219, 238, 0.26);
+  background: rgba(5, 16, 19, 0.78);
+}
+
+.brand-block {
+  min-width: 0;
+}
+
+.eyebrow {
+  margin: 0 0 8px;
+  color: #60dbee;
+  font-size: 0.74rem;
+  font-weight: 700;
+  letter-spacing: 0;
+  text-transform: uppercase;
+}
+
+h1,
+h2,
+p {
+  overflow-wrap: anywhere;
+}
+
+h1 {
+  max-width: 980px;
+  margin: 0;
+  color: #f3feff;
+  font-size: clamp(1.6rem, 3.4vw, 2.5rem);
+  line-height: 1.08;
+}
+
+h2 {
+  margin: 0;
+  color: #f3feff;
+  font-size: 1.02rem;
+  line-height: 1.2;
+}
+
+.run-note {
+  max-width: 760px;
+  margin: 10px 0 0;
+  color: #a8cbd1;
+  font-size: 0.92rem;
+  line-height: 1.45;
+}
+
+.burst-toggle {
+  flex: 0 0 auto;
+  min-height: 42px;
+  border: 1px solid rgba(96, 219, 238, 0.72);
+  border-radius: 6px;
+  padding: 10px 14px;
+  background: #0b3138;
+  color: #e6fbff;
+  cursor: pointer;
+}
+
+.burst-toggle:hover,
+.burst-toggle:focus-visible {
+  outline: none;
+  border-color: #9bf4ff;
+  background: #0e4149;
+}
+
+.console-grid {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(300px, 390px);
+  gap: 18px;
+  align-items: start;
+  padding: 20px clamp(16px, 4vw, 34px) 32px;
+}
+
+.analysis-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 14px;
+}
+
+.panel,
+.equipment-panel,
+.error-panel {
+  border: 1px solid rgba(96, 219, 238, 0.2);
+  border-radius: 8px;
+  background: rgba(8, 28, 33, 0.82);
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.04);
+}
+
+.panel {
+  min-height: 150px;
+  padding: 16px;
+}
+
+.panel ul {
+  margin: 12px 0 0;
+  padding-left: 18px;
+}
+
+.panel li {
+  margin: 8px 0;
+  color: #d7f3f7;
+  line-height: 1.42;
+}
+
+.muted {
+  margin: 12px 0 0;
+  color: #89aeb6;
+  line-height: 1.45;
+}
+
+.equipment-panel {
+  position: sticky;
+  top: 18px;
+  padding: 18px;
+  border-color: rgba(96, 219, 238, 0.36);
+  background: linear-gradient(180deg, rgba(10, 48, 56, 0.94), rgba(8, 28, 33, 0.9));
+}
+
+.panel-heading {
+  display: flex;
+  gap: 10px;
+  align-items: flex-start;
+  justify-content: space-between;
+  margin-bottom: 6px;
+}
+
+.state-pill {
+  max-width: 45%;
+  border: 1px solid rgba(125, 244, 255, 0.35);
+  border-radius: 999px;
+  padding: 4px 8px;
+  color: #c7f8ff;
+  font-size: 0.74rem;
+  line-height: 1.1;
+  overflow-wrap: anywhere;
+  text-transform: uppercase;
+}
+
+.equipment-why {
+  margin: 12px 0 0;
+  color: #d7f3f7;
+  line-height: 1.48;
+}
+
+dl {
+  margin: 16px 0 0;
+}
+
+dt {
+  margin-top: 14px;
+  color: #60dbee;
+  font-size: 0.78rem;
+  font-weight: 700;
+  text-transform: uppercase;
+}
+
+dd {
+  margin: 6px 0 0;
+  color: #e6fbff;
+  line-height: 1.45;
+  overflow-wrap: anywhere;
+}
+
+.error-panel {
+  max-width: 760px;
+  margin: 36px auto;
+  padding: 24px;
+}
+
+.error-panel p:last-child {
+  color: #ffc7c7;
+  line-height: 1.5;
+}
+
+body.burst .console-grid {
+  grid-template-columns: minmax(0, 1fr);
+}
+
+body.burst .equipment-panel {
+  position: static;
+  order: -1;
+  box-shadow:
+    0 0 0 1px rgba(96, 219, 238, 0.18),
+    0 18px 42px rgba(0, 0, 0, 0.24);
+}
+
+body.burst .analysis-grid {
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+}
+
+body.burst .panel {
+  min-height: 0;
+}
+
+body.burst .panel:nth-child(4),
+body.burst .panel:nth-child(5) {
+  display: none;
+}
+
+@media (max-width: 900px) {
+  .topbar {
+    align-items: flex-start;
+    flex-direction: column;
+  }
+
+  .console-grid,
+  .analysis-grid,
+  body.burst .analysis-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .equipment-panel {
+    position: static;
+  }
+
+  .burst-toggle {
+    width: 100%;
+  }
+}
