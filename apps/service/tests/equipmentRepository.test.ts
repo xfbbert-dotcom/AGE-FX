@@ -7,6 +7,7 @@ import { openAgeDatabase } from "../src/db/client.js";
 import {
   createEquipmentRecommendation,
   getEquipmentItem,
+  listEquipmentItems,
   updateEquipmentState
 } from "../src/equipment/equipmentRepository.js";
 
@@ -58,5 +59,40 @@ describe("equipment repository", () => {
       Date.parse(created.updatedAt)
     );
     expect(getEquipmentItem(db, created.id).state).toBe("approved");
+  });
+
+  it("lists equipment items newest first", () => {
+    tempRoot = mkdtempSync(join(tmpdir(), "age-fx-equipment-"));
+    db = openAgeDatabase(tempRoot);
+
+    const first = createEquipmentRecommendation(db, "2026-06-18", {
+      equipmentName: "C-Funnels Capture Check",
+      equipmentType: "capture_check",
+      whyThisEquipment: "No captured messages were found.",
+      sourceBattleInsight: "No captured battle record",
+      minimumViableVersion: "Confirm one captured message.",
+      expectedBenefit: "Restores tomorrow's capture record.",
+      printPrompt: "Print a capture checklist.",
+      state: "recommended"
+    });
+    const second = createEquipmentRecommendation(db, "2026-06-19", {
+      equipmentName: "Lake Blue Concept Card",
+      equipmentType: "concept_card",
+      whyThisEquipment: "A captured tool idea is ready to reuse.",
+      sourceBattleInsight: "Could this become a reusable planning tool?",
+      minimumViableVersion: "One printable card with prompt fields.",
+      expectedBenefit: "Preserves the idea for tomorrow.",
+      printPrompt: "Print a lake-blue concept card.",
+      state: "recommended"
+    });
+
+    expect(listEquipmentItems(db).map((item) => item.id)).toEqual([
+      second.id,
+      first.id
+    ]);
+    expect(listEquipmentItems(db).map((item) => item.equipmentName)).toEqual([
+      "Lake Blue Concept Card",
+      "C-Funnels Capture Check"
+    ]);
   });
 });
