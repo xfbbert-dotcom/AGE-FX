@@ -5,7 +5,7 @@
     "typecheck": "tsc -p tsconfig.base.json --noEmit",
     "service": "tsx apps/service/src/index.ts",
     "console": "vite apps/console --host 127.0.0.1 --port 5173",
-    "build:console": "vite build apps/console --outDir ../../dist/console",
+    "build:console": "vite build apps/console --outDir ../../dist/console --emptyOutDir",
     "build:extension": "node scripts/build-extension.mjs"
   },
   "dependencies": {

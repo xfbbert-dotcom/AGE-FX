@@ -38,4 +38,35 @@ describe("console rendering", () => {
     expect(todayIsoDate(shanghaiEarlyMorning)).toBe("2026-01-01");
     expect(shanghaiEarlyMorning.toISOString().slice(0, 10)).toBe("2025-12-31");
   });
+
+  it("escapes dynamic analysis strings before inserting markup", () => {
+    const suspiciousText = `<img src=x onerror="window.__xss=1">`;
+    document.body.innerHTML = `<main id="app"></main>`;
+
+    renderAnalysis({
+      analysisDate: "2026-06-19",
+      thoughtTitle: suspiciousText,
+      coreThemes: [suspiciousText],
+      repeatedQuestions: [],
+      newlyFormedJudgments: [],
+      unclosedThinkingLoops: [],
+      reusableMaterial: [],
+      threadsToContinueTomorrow: [],
+      recommendedEquipment: [
+        {
+          equipmentName: suspiciousText,
+          equipmentType: "concept_card",
+          whyThisEquipment: suspiciousText,
+          sourceBattleInsight: suspiciousText,
+          minimumViableVersion: suspiciousText,
+          expectedBenefit: suspiciousText,
+          printPrompt: suspiciousText,
+          state: "recommended"
+        }
+      ]
+    });
+
+    expect(document.querySelector("img")).toBeNull();
+    expect(document.body.textContent).toContain(suspiciousText);
+  });
 });
