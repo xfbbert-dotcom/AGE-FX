@@ -5,8 +5,14 @@
     "typecheck": "tsc -p tsconfig.base.json --noEmit",
     "service": "tsx apps/service/src/index.ts",
     "console": "vite apps/console --host 127.0.0.1 --port 5173",
-    "build:console": "vite build apps/console --outDir ../../dist/console --emptyOutDir",
-    "build:extension": "node scripts/build-extension.mjs"
+    "build:service": "tsc -p tsconfig.service-build.json",
+    "build:console": "node scripts/build-console.mjs",
+    "build:extension": "node scripts/build-extension.mjs",
+    "desktop": "npm run build:console && electron apps/desktop/main.cjs",
+    "desktop:dev": "npm run build:console && electron apps/desktop/main.cjs",
+    "build:desktop": "npm run build:console && npm run build:service && node scripts/build-desktop.mjs",
+    "package:desktop": "npm run build:desktop && node scripts/package-desktop-portable.mjs",
+    "shortcut:desktop": "node scripts/create-desktop-shortcut.mjs"
   },
   "dependencies": {
     "cors": "^2.8.5",
@@ -19,6 +25,7 @@
     "@types/jsdom": "^28.0.3",
     "@types/node": "^22.10.5",
     "@types/supertest": "^6.0.2",
+    "electron": "^42.4.1",
     "jsdom": "^25.0.1",
     "supertest": "^7.0.0",
     "tsx": "^4.19.2",

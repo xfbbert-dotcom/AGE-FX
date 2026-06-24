@@ -57,6 +57,39 @@ describe("Edge extension content capture", () => {
     );
   });
 
+  it("extracts ChatGPT messages from numbered conversation turn test ids", async () => {
+    const dom = new JSDOM(
+      `<!doctype html>
+      <title>AGE-FX Numbered ChatGPT Sample</title>
+      <main>
+        <section data-testid="conversation-turn-1" aria-label="You said">
+          <p>今天我在思考 AGE 系统如何整理灵感。</p>
+        </section>
+        <section data-testid="conversation-turn-2" aria-label="ChatGPT said">
+          <p>可以把它抽象为战况分析和装备生成。</p>
+        </section>
+      </main>`,
+      { url: "https://chatgpt.com/c/age-fx" }
+    );
+    globalThis.document = dom.window.document;
+
+    const messages = await extractVisibleMessages("https://chatgpt.com/c/age-fx");
+
+    expect(messages).toHaveLength(2);
+    expect(messages).toEqual([
+      expect.objectContaining({
+        source: "chatgpt",
+        messageRole: "user",
+        messageText: "今天我在思考 AGE 系统如何整理灵感。"
+      }),
+      expect.objectContaining({
+        source: "chatgpt",
+        messageRole: "assistant",
+        messageText: "可以把它抽象为战况分析和装备生成。"
+      })
+    ]);
+  });
+
   it("extracts Gemini user and assistant messages", async () => {
     loadFixture("gemini-sample.html", "https://gemini.google.com/app/age-fx");
 

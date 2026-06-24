@@ -5,8 +5,8 @@ import type { DatabaseSync as DatabaseSyncType } from "node:sqlite";
 import { DEFAULT_DATA_ROOT } from "../config.js";
 import { applySchema } from "./schema.js";
 
-const require = createRequire(__filename);
-const { DatabaseSync } = require("node:sqlite") as {
+const nodeRequire = createRequire(__filename);
+const { DatabaseSync } = nodeRequire("node:sqlite") as {
   DatabaseSync: typeof DatabaseSyncType;
 };
 

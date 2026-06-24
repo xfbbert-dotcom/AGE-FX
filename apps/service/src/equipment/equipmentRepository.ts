@@ -64,12 +64,73 @@ function mapEquipmentItemRow(row: EquipmentItemRow): EquipmentItem {
   };
 }
 
+function getSameDayEquipmentItem(
+  db: DatabaseSync,
+  analysisDate: string,
+  recommendation: EquipmentRecommendationInput
+): EquipmentItem | null {
+  const row = db
+    .prepare(`
+      SELECT
+        id,
+        analysis_date,
+        equipment_name,
+        equipment_type,
+        why_this_equipment,
+        source_battle_insight,
+        minimum_viable_version,
+        expected_benefit,
+        print_prompt,
+        state,
+        created_at,
+        updated_at
+      FROM equipment_items
+      WHERE analysis_date = $analysisDate
+        AND equipment_name = $equipmentName
+        AND equipment_type = $equipmentType
+      ORDER BY id DESC
+      LIMIT 1
+    `)
+    .get({
+      $analysisDate: analysisDate,
+      $equipmentName: recommendation.equipmentName,
+      $equipmentType: recommendation.equipmentType
+    }) as unknown as EquipmentItemRow | undefined;
+
+  return row ? mapEquipmentItemRow(row) : null;
+}
+
 export function createEquipmentRecommendation(
   db: DatabaseSync,
   analysisDate: string,
   recommendation: EquipmentRecommendationInput
 ): EquipmentItem {
   const timestamp = nowIso();
+  const existingItem = getSameDayEquipmentItem(db, analysisDate, recommendation);
+
+  if (existingItem) {
+    db.prepare(`
+      UPDATE equipment_items
+      SET why_this_equipment = $whyThisEquipment,
+          source_battle_insight = $sourceBattleInsight,
+          minimum_viable_version = $minimumViableVersion,
+          expected_benefit = $expectedBenefit,
+          print_prompt = $printPrompt,
+          updated_at = $updatedAt
+      WHERE id = $id
+    `).run({
+      $id: existingItem.id,
+      $whyThisEquipment: recommendation.whyThisEquipment,
+      $sourceBattleInsight: recommendation.sourceBattleInsight,
+      $minimumViableVersion: recommendation.minimumViableVersion,
+      $expectedBenefit: recommendation.expectedBenefit,
+      $printPrompt: recommendation.printPrompt,
+      $updatedAt: timestamp
+    });
+
+    return getEquipmentItem(db, existingItem.id);
+  }
+
   const result = db
     .prepare(`
       INSERT INTO equipment_items (

@@ -1,4 +1,4 @@
-import { mkdtempSync, rmSync } from "node:fs";
+import { mkdtempSync, mkdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import type { DatabaseSync } from "node:sqlite";
@@ -7,6 +7,7 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import { openAgeDatabase } from "../src/db/client.js";
 import { createContentHash } from "../src/hash.js";
 import { createServer, localIsoDate } from "../src/server.js";
+import { analyzeDailyBattle } from "../src/analysis/analyzer.js";
 
 function createCapturedMessage(
   overrides: Partial<{
@@ -60,11 +61,29 @@ describe("local companion service API", () => {
     vi.useRealTimers();
   });
 
-  function createTestApp(options?: Parameters<typeof createServer>[2]) {
+  function createTestApp(options: Parameters<typeof createServer>[2] = {}) {
     tempRoot = mkdtempSync(join(tmpdir(), "age-fx-api-"));
     db = openAgeDatabase(tempRoot);
 
-    return createServer(db, tempRoot, options);
+    return createServer(db, tempRoot, {
+      analysisEngine: {
+        analyze: async (date, messages) => analyzeDailyBattle(date, messages)
+      },
+      ...options
+    });
+  }
+
+  function createTestAppWithoutInjectedAnalyzer() {
+    tempRoot = mkdtempSync(join(tmpdir(), "age-fx-api-"));
+    db = openAgeDatabase(tempRoot);
+
+    return createServer(db, tempRoot, {
+      env: {
+        AGE_FX_OPENAI_API_KEY: "",
+        AGE_FX_OPENAI_BASE_URL: "",
+        AGE_FX_OPENAI_MODEL: ""
+      }
+    });
   }
 
   it("captures a message once and reports duplicate content hashes", async () => {
@@ -78,7 +97,7 @@ describe("local companion service API", () => {
       .send(payload)
       .expect(200)
       .expect(({ body }) => {
-        expect(body).toEqual({ inserted: 1, duplicates: 0 });
+        expect(body).toEqual({ inserted: 1, duplicates: 0, merged: 0 });
       });
 
     await request(app)
@@ -86,7 +105,44 @@ describe("local companion service API", () => {
       .send(payload)
       .expect(200)
       .expect(({ body }) => {
-        expect(body).toEqual({ inserted: 0, duplicates: 1 });
+        expect(body).toEqual({ inserted: 0, duplicates: 1, merged: 0 });
+      });
+  });
+
+  it("reports merged streaming assistant captures", async () => {
+    const app = createTestApp();
+    const partialText = "Gemini says architecture starts with boundaries.";
+    const completeText =
+      "Gemini says architecture starts with boundaries. Then ownership and data flow become clear.";
+    const partial = createCapturedMessage({
+      source: "gemini",
+      pageUrl: "https://gemini.google.com/app/example",
+      messageRole: "assistant",
+      messageText: partialText
+    });
+    const complete = createCapturedMessage({
+      source: "gemini",
+      capturedAt: "2026-06-19T12:35:01.000Z",
+      pageUrl: "https://gemini.google.com/app/example",
+      messageRole: "assistant",
+      messageText: completeText
+    });
+
+    await request(app).post("/api/capture").send({ messages: [partial] }).expect(200);
+    await request(app)
+      .post("/api/capture")
+      .send({ messages: [complete] })
+      .expect(200)
+      .expect(({ body }) => {
+        expect(body).toEqual({ inserted: 0, duplicates: 0, merged: 1 });
+      });
+
+    await request(app)
+      .get("/api/status")
+      .query({ date: "2026-06-19" })
+      .expect(200)
+      .expect(({ body }) => {
+        expect(body.capturedMessages).toBe(1);
       });
   });
 
@@ -101,7 +157,7 @@ describe("local companion service API", () => {
       .send({ messages: [message] })
       .expect(200)
       .expect(({ body }) => {
-        expect(body).toEqual({ inserted: 1, duplicates: 0 });
+        expect(body).toEqual({ inserted: 1, duplicates: 0, merged: 0 });
       });
 
     expect(listStoredContentHashes()).toEqual([message.contentHash]);
@@ -327,6 +383,276 @@ describe("local companion service API", () => {
     });
   });
 
+  it("previews a captured day without storing analysis or equipment", async () => {
+    const app = createTestApp();
+
+    await request(app)
+      .post("/api/capture")
+      .send({
+        messages: [
+          createCapturedMessage({
+            conversationTitle: "AGE-FX planning",
+            messageText: "Could this tool idea become a Lake Blue Concept Card?"
+          })
+        ]
+      })
+      .expect(200);
+
+    await request(app)
+      .post("/api/preview")
+      .send({ date: "2026-06-19" })
+      .expect(200)
+      .expect(({ body }) => {
+        expect(body.mode).toBe("preview");
+        expect(body.analysis).toMatchObject({
+          analysisDate: "2026-06-19",
+          thoughtTitle: "Daily battle for 2026-06-19"
+        });
+      });
+
+    expect(listStoredAnalyses()).toEqual([]);
+
+    await request(app)
+      .get("/api/equipment")
+      .expect(200)
+      .expect(({ body }) => {
+        expect(body.items).toEqual([]);
+      });
+  });
+
+  it("returns a clear error when LLM analysis is not configured", async () => {
+    const app = createTestAppWithoutInjectedAnalyzer();
+
+    await request(app)
+      .post("/api/preview")
+      .send({ date: "2026-06-19" })
+      .expect(503)
+      .expect(({ body }) => {
+        expect(body).toEqual({
+          error: "llm_not_configured",
+          message:
+            "AGE-FX deep analysis requires AGE_FX_OPENAI_API_KEY, AGE_FX_OPENAI_BASE_URL, and AGE_FX_OPENAI_MODEL."
+        });
+      });
+  });
+
+  it("reads public runtime config without returning the API key", async () => {
+    const app = createTestApp({
+      env: {
+        AGE_FX_OPENAI_BASE_URL: "https://api.openai.com/v1",
+        AGE_FX_OPENAI_MODEL: "gpt-5.2",
+        AGE_FX_OPENAI_API_KEY: "sk-secret",
+        AGE_FX_EXTENSION_ORIGINS: "chrome-extension://edgeid"
+      }
+    });
+
+    await request(app)
+      .get("/api/settings/runtime-config")
+      .expect(200)
+      .expect(({ body }) => {
+        expect(body).toEqual({
+          baseUrl: "https://api.openai.com/v1",
+          model: "gpt-5.2",
+          hasApiKey: true,
+          extensionOrigins: "chrome-extension://edgeid",
+          protocol: "responses"
+        });
+        expect(JSON.stringify(body)).not.toContain("sk-secret");
+      });
+  });
+
+  it("updates local runtime config through the settings API", async () => {
+    const app = createTestApp({
+      env: {
+        AGE_FX_OPENAI_API_KEY: "sk-existing"
+      }
+    });
+
+    await request(app)
+      .put("/api/settings/runtime-config")
+      .send({
+        baseUrl: "https://api.openai.com/v1",
+        model: "gpt-5.2",
+        protocol: "chat_completions",
+        apiKey: "",
+        extensionOrigins: "chrome-extension://edgeid"
+      })
+      .expect(200)
+      .expect(({ body }) => {
+        expect(body).toEqual({
+          baseUrl: "https://api.openai.com/v1",
+          model: "gpt-5.2",
+          hasApiKey: true,
+          extensionOrigins: "chrome-extension://edgeid",
+          protocol: "chat_completions"
+        });
+      });
+
+    expect(readFileSync(join(tempRoot!, "config", "service.env"), "utf8")).toContain(
+      "AGE_FX_OPENAI_API_KEY=sk-existing"
+    );
+    expect(readFileSync(join(tempRoot!, "config", "service.env"), "utf8")).toContain(
+      "AGE_FX_OPENAI_PROTOCOL=chat_completions"
+    );
+  });
+
+  it("uses updated extension origins for CORS without restarting", async () => {
+    const app = createTestApp();
+
+    await request(app)
+      .put("/api/settings/runtime-config")
+      .send({
+        baseUrl: "https://api.openai.com/v1",
+        model: "gpt-5.2",
+        apiKey: "sk-updated",
+        extensionOrigins: "chrome-extension://newedgeid"
+      })
+      .expect(200);
+
+    await request(app)
+      .get("/api/health")
+      .set("Origin", "chrome-extension://newedgeid")
+      .expect(200)
+      .expect((response) => {
+        expect(response.headers["access-control-allow-origin"]).toBe(
+          "chrome-extension://newedgeid"
+        );
+      });
+  });
+
+  it("serves built console assets when a console dist path is provided", async () => {
+    tempRoot = mkdtempSync(join(tmpdir(), "age-fx-api-"));
+    db = openAgeDatabase(tempRoot);
+    const consoleDist = join(tempRoot, "console-dist");
+    mkdirSync(consoleDist, { recursive: true });
+    writeFileSync(
+      join(consoleDist, "index.html"),
+      "<!doctype html><html><body>AGE-FX Desktop Console</body></html>",
+      "utf8"
+    );
+    const app = createServer(db, tempRoot, {
+      analysisEngine: {
+        analyze: async (date, messages) => analyzeDailyBattle(date, messages)
+      },
+      consoleDist
+    });
+
+    await request(app)
+      .get("/")
+      .expect(200)
+      .expect((response) => {
+        expect(response.text).toContain("AGE-FX Desktop Console");
+      });
+
+    await request(app)
+      .get("/api/health")
+      .expect(200)
+      .expect(({ body }) => {
+        expect(body.ok).toBe(true);
+      });
+  });
+
+  it("creates a manual bridge prompt for the selected day", async () => {
+    const app = createTestApp();
+
+    await request(app)
+      .post("/api/capture")
+      .send({
+        messages: [
+          createCapturedMessage({
+            conversationTitle: "Manual bridge",
+            messageRole: "user",
+            messageText: "API quota is gone, but ChatGPT Plus can still run the protocol."
+          })
+        ]
+      })
+      .expect(200);
+
+    await request(app)
+      .get("/api/manual-analysis/prompt")
+      .query({ date: "2026-06-19" })
+      .expect(200)
+      .expect(({ body }) => {
+        expect(body.date).toBe("2026-06-19");
+        expect(body.prompt).toContain("AGE-FX Manual External Model Bridge");
+        expect(body.prompt).toContain("Analysis date: 2026-06-19");
+        expect(body.prompt).toContain("API quota is gone");
+      });
+  });
+
+  it("renders manual analysis preview without storing analysis or equipment", async () => {
+    const app = createTestApp();
+
+    await request(app)
+      .post("/api/manual-analysis/preview")
+      .send({
+        date: "2026-06-19",
+        analysisText: manualAnalysisText("Manual Preview Reactor")
+      })
+      .expect(200)
+      .expect(({ body }) => {
+        expect(body.mode).toBe("manual-preview");
+        expect(body.analysis).toMatchObject({
+          analysisDate: "2026-06-19",
+          thoughtTitle: "Manual Preview Reactor"
+        });
+      });
+
+    expect(listStoredAnalyses()).toEqual([]);
+
+    await request(app)
+      .get("/api/equipment")
+      .expect(200)
+      .expect(({ body }) => {
+        expect(body.items).toEqual([]);
+      });
+  });
+
+  it("settles manual analysis and creates one equipment recommendation", async () => {
+    const app = createTestApp();
+
+    await request(app)
+      .post("/api/manual-analysis/settle")
+      .send({
+        date: "2026-06-19",
+        analysisText: manualAnalysisText("Manual Settlement Reactor")
+      })
+      .expect(200)
+      .expect(({ body }) => {
+        expect(body.analysis).toMatchObject({
+          analysisDate: "2026-06-19",
+          thoughtTitle: "Manual Settlement Reactor"
+        });
+        expect(body.equipment).toMatchObject({
+          analysisDate: "2026-06-19",
+          equipmentName: "Quota Bypass Prism",
+          state: "recommended"
+        });
+      });
+
+    expect(listStoredAnalyses()).toEqual([
+      expect.objectContaining({
+        analysis_date: "2026-06-19",
+        thought_title: "Manual Settlement Reactor"
+      })
+    ]);
+  });
+
+  it("rejects invalid manual analysis JSON", async () => {
+    const app = createTestApp();
+
+    await request(app)
+      .post("/api/manual-analysis/preview")
+      .send({
+        date: "2026-06-19",
+        analysisText: "{not-json"
+      })
+      .expect(400)
+      .expect(({ body }) => {
+        expect(body.error).toBe("invalid_manual_analysis_result");
+      });
+  });
+
   it("analyzes a captured day and lists recommended equipment", async () => {
     const app = createTestApp();
     const message = {
@@ -370,6 +696,48 @@ describe("local companion service API", () => {
             state: "recommended"
           })
         ]);
+      });
+  });
+
+  it("refreshes a same-day recommendation instead of creating duplicate equipment", async () => {
+    const app = createTestApp();
+
+    await request(app)
+      .post("/api/capture")
+      .send({
+        messages: [
+          createCapturedMessage({
+            messageText: "Could this tool idea become a Lake Blue Concept Card?"
+          })
+        ]
+      })
+      .expect(200);
+
+    await request(app).post("/api/analyze").send({ date: "2026-06-19" }).expect(200);
+
+    await request(app)
+      .post("/api/capture")
+      .send({
+        messages: [
+          createCapturedMessage({
+            messageText: "Should the next equipment focus on automatic refresh?"
+          })
+        ]
+      })
+      .expect(200);
+
+    await request(app).post("/api/analyze").send({ date: "2026-06-19" }).expect(200);
+
+    await request(app)
+      .get("/api/equipment")
+      .expect(200)
+      .expect(({ body }) => {
+        expect(body.items).toHaveLength(1);
+        expect(body.items[0]).toMatchObject({
+          analysisDate: "2026-06-19",
+          equipmentName: "Lake Blue Concept Card",
+          state: "recommended"
+        });
       });
   });
 
@@ -447,5 +815,32 @@ describe("local companion service API", () => {
         report_json: string;
       }>) ?? []
     );
+  }
+
+  function manualAnalysisText(thoughtTitle: string): string {
+    return JSON.stringify({
+      analysisDate: "2026-06-19",
+      thoughtTitle,
+      thoughtSummary:
+        "Manual bridge result: the user can route the AGE-FX protocol through any chosen web model.",
+      coreThemes: ["manual external model bridge"],
+      repeatedQuestions: [],
+      newlyFormedJudgments: [],
+      unclosedThinkingLoops: [],
+      reusableMaterial: [],
+      threadsToContinueTomorrow: [],
+      recommendedEquipment: [
+        {
+          equipmentName: "Quota Bypass Prism",
+          equipmentType: "manual_bridge",
+          whyThisEquipment: "API quota should not block the daily thought review.",
+          sourceBattleInsight: "Manual bridge can reuse the same AGE-FX protocol.",
+          minimumViableVersion: "Copy prompt, paste model JSON, render or settle.",
+          expectedBenefit: "Keeps analysis available without API credits.",
+          printPrompt: "Build a manual bridge panel.",
+          state: "recommended"
+        }
+      ]
+    });
   }
 });

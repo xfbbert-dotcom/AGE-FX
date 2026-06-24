@@ -186,39 +186,96 @@
     return title.length > 0 ? title : null;
   }
 
-  function getChatGptMessageElements() {
-    return [...root.document.querySelectorAll('article[data-message-author-role]')].map(
-      (element) => ({
-        element,
-        role:
-          element.getAttribute("data-message-author-role") === "assistant"
-            ? "assistant"
-            : "user"
-      })
+  function uniqueElements(elements) {
+    return [...new Set(elements.filter(Boolean))];
+  }
+
+  function collectElements(selectors) {
+    return uniqueElements(
+      selectors.flatMap((selector) => [...root.document.querySelectorAll(selector)])
     );
   }
 
-  function getGeminiMessageElements() {
-    return [...root.document.querySelectorAll('[data-test-id="conversation-turn"]')].map(
-      (element) => {
-        const roleHint = normalizeMessageText(
-          element.getAttribute("data-message-role") ||
-            element.getAttribute("data-role") ||
-            element.getAttribute("aria-label") ||
-            ""
-        ).toLowerCase();
-        const role =
-          roleHint.includes("user") || roleHint.includes("human")
-            ? "user"
-            : roleHint.includes("assistant") ||
-                roleHint.includes("model") ||
-                roleHint.includes("gemini")
-              ? "assistant"
-              : "unknown";
+  function roleFromHint(hint, fallbackRole = "unknown") {
+    const normalizedHint = normalizeMessageText(hint).toLowerCase();
 
-        return { element, role };
-      }
-    );
+    if (
+      normalizedHint.includes("user") ||
+      normalizedHint.includes("human") ||
+      normalizedHint.includes("you") ||
+      normalizedHint.includes("用户") ||
+      normalizedHint.includes("你")
+    ) {
+      return "user";
+    }
+
+    if (
+      normalizedHint.includes("assistant") ||
+      normalizedHint.includes("chatgpt") ||
+      normalizedHint.includes("model") ||
+      normalizedHint.includes("gemini") ||
+      normalizedHint.includes("response") ||
+      normalizedHint.includes("回复")
+    ) {
+      return "assistant";
+    }
+
+    return fallbackRole;
+  }
+
+  function inferMessageRole(element, fallbackRole = "unknown") {
+    const tagName = element.tagName?.toLowerCase() ?? "";
+
+    if (tagName === "user-query") {
+      return "user";
+    }
+
+    if (tagName === "model-response") {
+      return "assistant";
+    }
+
+    const hint = [
+      element.getAttribute("data-message-author-role"),
+      element.getAttribute("data-message-role"),
+      element.getAttribute("data-role"),
+      element.getAttribute("aria-label"),
+      element.getAttribute("data-testid"),
+      element.getAttribute("data-test-id"),
+      element.className
+    ]
+      .filter(Boolean)
+      .join(" ");
+
+    return roleFromHint(hint, fallbackRole);
+  }
+
+  function getChatGptMessageElements() {
+    return collectElements([
+      "article[data-message-author-role]",
+      '[data-message-author-role]',
+      '[data-message-id]',
+      '[data-testid^="conversation-turn"]',
+      '[data-testid*="conversation-turn"]',
+      '[role="article"]'
+    ]).map((element, index) => ({
+      element,
+      role: inferMessageRole(element, index % 2 === 0 ? "user" : "assistant")
+    }));
+  }
+
+  function getGeminiMessageElements() {
+    return collectElements([
+      '[data-test-id="conversation-turn"]',
+      '[data-test-id^="conversation-turn"]',
+      '[data-testid^="conversation-turn"]',
+      "user-query",
+      "model-response",
+      '[data-test-id*="user-query"]',
+      '[data-test-id*="model-response"]'
+    ]).map((element) => ({
+      element,
+      role: inferMessageRole(element)
+    }));
   }
 
   async function extractVisibleMessages(pageUrl = root.location?.href) {
@@ -313,15 +370,21 @@
     return indicator;
   }
 
-  function setIndicatorState(state) {
+  function setIndicatorState(state, detail = {}) {
     const indicator = ensureIndicator();
 
     if (!indicator) {
       return;
     }
 
+    const countText =
+      typeof detail.count === "number" ? ` · ${detail.count} msg` : "";
     indicator.textContent =
-      state === "captured" ? "AGE-FX captured" : state === "offline" ? "AGE-FX offline" : "AGE-FX armed";
+      state === "captured"
+        ? `AGE-FX captured${countText}`
+        : state === "offline"
+          ? `AGE-FX offline${countText}`
+          : `AGE-FX armed${countText}`;
     indicator.dataset.state = state;
     indicator.style.cssText = [
       "position:fixed",
@@ -353,12 +416,15 @@
     }
 
     setIndicatorState("armed");
-    const messages = filterUnsentMessages(await extractVisibleMessages(pageUrl), new Set(sentHashes));
+    const visibleMessages = await extractVisibleMessages(pageUrl);
+    const messages = filterUnsentMessages(visibleMessages, new Set(sentHashes));
 
     if (messages.length === 0) {
+      setIndicatorState("armed", { count: visibleMessages.length });
       return;
     }
 
+    setIndicatorState("armed", { count: messages.length });
     const response = await sendCaptureMessage(messages);
 
     if (response.ok) {
@@ -367,7 +433,7 @@
       }
     }
 
-    setIndicatorState(response.ok ? "captured" : "offline");
+    setIndicatorState(response.ok ? "captured" : "offline", { count: messages.length });
   }
 
   function startCaptureLoop() {

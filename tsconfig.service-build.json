@@ -1,0 +1,10 @@
+{
+  "extends": "./tsconfig.base.json",
+  "compilerOptions": {
+    "noEmit": false,
+    "outDir": "dist/service",
+    "rootDir": "apps/service/src",
+    "types": ["node"]
+  },
+  "include": ["apps/service/src/**/*.ts"]
+}
