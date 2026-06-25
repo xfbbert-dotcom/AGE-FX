@@ -441,7 +441,7 @@ describe("local companion service API", () => {
       env: {
         AGE_FX_OPENAI_BASE_URL: "https://api.openai.com/v1",
         AGE_FX_OPENAI_MODEL: "gpt-5.2",
-        AGE_FX_OPENAI_API_KEY: "sk-secret",
+        AGE_FX_OPENAI_API_KEY: "agefx-secret-key",
         AGE_FX_EXTENSION_ORIGINS: "chrome-extension://edgeid"
       }
     });
@@ -457,14 +457,14 @@ describe("local companion service API", () => {
           extensionOrigins: "chrome-extension://edgeid",
           protocol: "responses"
         });
-        expect(JSON.stringify(body)).not.toContain("sk-secret");
+        expect(JSON.stringify(body)).not.toContain("agefx-secret-key");
       });
   });
 
   it("updates local runtime config through the settings API", async () => {
     const app = createTestApp({
       env: {
-        AGE_FX_OPENAI_API_KEY: "sk-existing"
+        AGE_FX_OPENAI_API_KEY: "agefx-existing-key"
       }
     });
 
@@ -489,7 +489,7 @@ describe("local companion service API", () => {
       });
 
     expect(readFileSync(join(tempRoot!, "config", "service.env"), "utf8")).toContain(
-      "AGE_FX_OPENAI_API_KEY=sk-existing"
+      "AGE_FX_OPENAI_API_KEY=agefx-existing-key"
     );
     expect(readFileSync(join(tempRoot!, "config", "service.env"), "utf8")).toContain(
       "AGE_FX_OPENAI_PROTOCOL=chat_completions"
@@ -504,7 +504,7 @@ describe("local companion service API", () => {
       .send({
         baseUrl: "https://api.openai.com/v1",
         model: "gpt-5.2",
-        apiKey: "sk-updated",
+        apiKey: "agefx-updated-key",
         extensionOrigins: "chrome-extension://newedgeid"
       })
       .expect(200);

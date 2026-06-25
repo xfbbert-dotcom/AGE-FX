@@ -164,7 +164,9 @@ function normalizeProtocol(value: string | undefined): OpenAiProtocol {
 }
 
 export function redactSecretFragments(value: string): string {
-  return value.replace(/sk-[A-Za-z0-9][A-Za-z0-9_*.-]{8,}/g, "[REDACTED_API_KEY]");
+  return value
+    .replace(/sk-[A-Za-z0-9][A-Za-z0-9_*.-]{8,}/g, "[REDACTED_API_KEY]")
+    .replace(/agefx_test_key_[A-Za-z0-9_*.-]{8,}/g, "[REDACTED_API_KEY]");
 }
 
 function summarizeUpstreamError(status: number, body: string): string {

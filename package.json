@@ -1,4 +1,17 @@
 {
+  "name": "age-fx-thought-console",
+  "version": "0.1.0",
+  "private": false,
+  "description": "Local-first AGE-FX inspired thought console for capturing ChatGPT and Gemini conversations, running daily analysis, and recommending one practical thinking tool.",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/xfbbert-dotcom/AGE-FX.git"
+  },
+  "bugs": {
+    "url": "https://github.com/xfbbert-dotcom/AGE-FX/issues"
+  },
+  "homepage": "https://github.com/xfbbert-dotcom/AGE-FX#readme",
   "scripts": {
     "test": "vitest run",
     "test:watch": "vitest",

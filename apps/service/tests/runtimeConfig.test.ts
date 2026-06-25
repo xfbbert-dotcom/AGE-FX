@@ -18,14 +18,14 @@ describe("runtime config", () => {
 # AGE-FX
 AGE_FX_OPENAI_BASE_URL=https://api.openai.com/v1
 AGE_FX_OPENAI_MODEL="gpt-5.2"
-AGE_FX_OPENAI_API_KEY='sk-test'
+AGE_FX_OPENAI_API_KEY='agefx-test-key'
 ignored
 bad-key=value
 `)
     ).toEqual({
       AGE_FX_OPENAI_BASE_URL: "https://api.openai.com/v1",
       AGE_FX_OPENAI_MODEL: "gpt-5.2",
-      AGE_FX_OPENAI_API_KEY: "sk-test"
+      AGE_FX_OPENAI_API_KEY: "agefx-test-key"
     });
   });
 
@@ -43,7 +43,7 @@ bad-key=value
       writeRuntimeConfig(dataRoot, {
         baseUrl: "https://api.openai.com/v1",
         model: "gpt-5.2",
-        apiKey: "sk-original",
+        apiKey: "agefx-original-key",
         extensionOrigins: "chrome-extension://edgeid",
         protocol: "responses"
       });
@@ -59,7 +59,7 @@ bad-key=value
 
     expect(fileText).toContain("AGE_FX_OPENAI_BASE_URL=https://example.test/v1");
     expect(fileText).toContain("AGE_FX_OPENAI_MODEL=gpt-5.3");
-    expect(fileText).toContain("AGE_FX_OPENAI_API_KEY=sk-original");
+    expect(fileText).toContain("AGE_FX_OPENAI_API_KEY=agefx-original-key");
     expect(fileText).toContain("AGE_FX_EXTENSION_ORIGINS=chrome-extension://newedgeid");
     expect(fileText).toContain("AGE_FX_OPENAI_PROTOCOL=chat_completions");
   });
@@ -69,7 +69,7 @@ bad-key=value
       publicRuntimeConfig({
         AGE_FX_OPENAI_BASE_URL: "https://api.openai.com/v1",
         AGE_FX_OPENAI_MODEL: "gpt-5.2",
-        AGE_FX_OPENAI_API_KEY: "sk-secret",
+        AGE_FX_OPENAI_API_KEY: "agefx-secret-key",
         AGE_FX_EXTENSION_ORIGINS: "chrome-extension://edgeid"
       })
     ).toEqual({

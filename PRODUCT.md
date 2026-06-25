@@ -29,18 +29,6 @@ Lake-blue, tactical, precise. The product should feel like a restrained AGE-FX c
 
 ## Visual Reference Constitution
 
-Primary reference image:
-`C:\Users\59912\AppData\Local\Temp\codex-clipboard-17980a3f-b832-477b-9f29-9ab22d3baa4e.png`
-
-Current visual calibration reference:
-`C:\Users\59912\AppData\Local\Temp\codex-clipboard-64894579-1a46-4daf-acb2-e553f26a9c11.png`
-
-Current production calibration screenshot:
-`D:\work\AGE-FX\.worktrees\codex-age-fx-mvp\dist\minimal-console-pass-1.png`
-
-Current side-by-side QA sheet:
-`D:\work\AGE-FX\.worktrees\codex-age-fx-mvp\dist\minimal-console-pass-1.png`
-
 The console visual language now follows a ChatGPT-web-inspired minimalist product UI: quiet white and soft gray surfaces, clear typography, restrained borders, subtle elevation, and almost no decoration. The Liquid Glass direction is retired for the production console unless the user explicitly revives it.
 
 Non-negotiable material reading:

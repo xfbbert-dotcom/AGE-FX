@@ -197,13 +197,13 @@ describe("OpenAI LLM analysis engine", () => {
         JSON.stringify({
           error: {
             message:
-              "Incorrect API key provided: sk-rNjP***********************************9dE6. You can find your API key at https://platform.openai.com/account/api-keys.",
+              "Incorrect API key provided: agefx_test_key_rNjP***********************************9dE6. You can find your API key at https://platform.openai.com/account/api-keys.",
             code: "invalid_api_key"
           }
         })
     }));
     const engine = createOpenAiAnalysisEngine({
-      apiKey: "sk-rNjP-real-secret",
+      apiKey: "agefx_test_key_rNjP_real_secret",
       baseUrl: "https://api.openai.test/v1",
       model: "test-model",
       fetchFn: fetchMock as unknown as typeof fetch
@@ -214,7 +214,7 @@ describe("OpenAI LLM analysis engine", () => {
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error);
       expect(message).toContain("Incorrect API key provided: [REDACTED_API_KEY]");
-      expect(message).not.toContain("sk-rNjP");
+      expect(message).not.toContain("agefx_test_key_rNjP");
       expect(message).not.toContain("9dE6");
     }
   });
