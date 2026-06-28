@@ -1,5 +1,6 @@
 import { describe, expect, it, vi } from "vitest";
 import {
+  buildBattleLog,
   buildManualAnalysisPrompt,
   createOpenAiAnalysisEngine,
   MissingLlmConfigError,
@@ -235,6 +236,38 @@ describe("OpenAI LLM analysis engine", () => {
     expect(prompt).toContain("Manual bridge should preserve the battle log.");
     expect(prompt).toContain("role=assistant");
     expect(systemPrompt).toContain("湖蓝之智");
+  });
+
+  it("renders attachments as message-bound evidence in the battle log", () => {
+    const message = capturedMessage(1, "user", "请结合这张图分析我的想法。");
+    const log = buildBattleLog([
+      {
+        ...message,
+        attachments: [
+          {
+            id: 1,
+            source: "chatgpt",
+            capturedAt: message.capturedAt,
+            conversationDate: message.conversationDate,
+            pageUrl: message.pageUrl,
+            messageContentHash: message.contentHash,
+            attachmentType: "image",
+            label: "AGE-FX system diagram",
+            url: "https://chatgpt.com/files/age-fx.png",
+            mimeType: "image/png",
+            visibleText: "AGE-FX system diagram",
+            extractedText: null,
+            analysisText: "Image preview shows AGE-FX funnels around a central logo.",
+            attachmentHash: "c".repeat(64)
+          }
+        ]
+      }
+    ]);
+
+    expect(log).toContain(`attachmentsForMessage=${message.contentHash}`);
+    expect(log).toContain("attachmentType=image");
+    expect(log).toContain("label=AGE-FX system diagram");
+    expect(log).toContain("analysisText=Image preview shows AGE-FX funnels");
   });
 
   it("parses fenced JSON pasted back from a manual web model", () => {

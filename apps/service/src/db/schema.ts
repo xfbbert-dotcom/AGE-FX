@@ -17,6 +17,29 @@ export function applySchema(db: DatabaseSync): void {
     CREATE INDEX IF NOT EXISTS idx_captured_messages_date
       ON captured_messages (conversation_date);
 
+    CREATE TABLE IF NOT EXISTS captured_attachments (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      source TEXT NOT NULL CHECK (source IN ('chatgpt', 'gemini')),
+      captured_at TEXT NOT NULL,
+      conversation_date TEXT NOT NULL,
+      page_url TEXT NOT NULL,
+      message_content_hash TEXT NOT NULL,
+      attachment_type TEXT NOT NULL CHECK (attachment_type IN ('image', 'file', 'link')),
+      label TEXT NOT NULL,
+      url TEXT,
+      mime_type TEXT,
+      visible_text TEXT,
+      extracted_text TEXT,
+      analysis_text TEXT,
+      attachment_hash TEXT NOT NULL UNIQUE
+    );
+
+    CREATE INDEX IF NOT EXISTS idx_captured_attachments_date
+      ON captured_attachments (conversation_date);
+
+    CREATE INDEX IF NOT EXISTS idx_captured_attachments_message_hash
+      ON captured_attachments (message_content_hash);
+
     CREATE TABLE IF NOT EXISTS daily_analyses (
       id INTEGER PRIMARY KEY AUTOINCREMENT,
       analysis_date TEXT NOT NULL UNIQUE,

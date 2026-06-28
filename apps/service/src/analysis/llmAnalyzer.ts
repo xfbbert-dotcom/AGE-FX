@@ -198,6 +198,17 @@ export function buildBattleLog(messages: CapturedMessageRecord[]): string {
   return messages
     .map((message, index) => {
       const title = message.conversationTitle ?? "Untitled";
+      const attachmentLines = (message.attachments ?? []).flatMap((attachment, attachmentIndex) => [
+        `attachment#${attachmentIndex + 1}`,
+        `attachmentsForMessage=${attachment.messageContentHash}`,
+        `attachmentType=${attachment.attachmentType}`,
+        `label=${attachment.label}`,
+        `url=${attachment.url ?? "null"}`,
+        `mimeType=${attachment.mimeType ?? "null"}`,
+        `visibleText=${attachment.visibleText ?? "null"}`,
+        `extractedText=${attachment.extractedText ?? "null"}`,
+        `analysisText=${attachment.analysisText ?? "null"}`
+      ]);
 
       return [
         `#${index + 1}`,
@@ -205,7 +216,8 @@ export function buildBattleLog(messages: CapturedMessageRecord[]): string {
         `role=${message.messageRole}`,
         `capturedAt=${message.capturedAt}`,
         `title=${title}`,
-        `text=${message.messageText}`
+        `text=${message.messageText}`,
+        ...(attachmentLines.length > 0 ? ["messageBoundAttachments:", ...attachmentLines] : [])
       ].join("\n");
     })
     .join("\n\n---\n\n");

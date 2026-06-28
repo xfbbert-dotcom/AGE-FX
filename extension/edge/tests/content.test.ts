@@ -90,6 +90,53 @@ describe("Edge extension content capture", () => {
     ]);
   });
 
+  it("binds visible images and files to the message that contains them", async () => {
+    const dom = new JSDOM(
+      `<!doctype html>
+      <title>AGE-FX Attachment Sample</title>
+      <main>
+        <article data-message-author-role="user">
+          <p>请分析这张产品图和这份白皮书。</p>
+          <img src="https://chatgpt.com/backend-api/files/image-1.png" alt="AGE-FX 概念图">
+          <a href="https://chatgpt.com/backend-api/files/whitepaper.pdf">AGE 系统白皮书.pdf</a>
+        </article>
+        <article data-message-author-role="assistant">
+          <p>我会把图片和文件作为这句话的配套素材来分析。</p>
+        </article>
+      </main>`,
+      { url: "https://chatgpt.com/c/age-fx" }
+    );
+    globalThis.document = dom.window.document;
+
+    const messages = await extractVisibleMessages("https://chatgpt.com/c/age-fx");
+
+    expect(messages[0]).toEqual(
+      expect.objectContaining({
+        messageRole: "user",
+        messageText:
+          "请分析这张产品图和这份白皮书。 AGE 系统白皮书.pdf",
+        attachments: [
+          expect.objectContaining({
+            source: "chatgpt",
+            attachmentType: "image",
+            label: "AGE-FX 概念图",
+            url: "https://chatgpt.com/backend-api/files/image-1.png",
+            visibleText: "AGE-FX 概念图",
+            messageContentHash: messages[0].contentHash
+          }),
+          expect.objectContaining({
+            source: "chatgpt",
+            attachmentType: "file",
+            label: "AGE 系统白皮书.pdf",
+            url: "https://chatgpt.com/backend-api/files/whitepaper.pdf",
+            visibleText: "AGE 系统白皮书.pdf",
+            messageContentHash: messages[0].contentHash
+          })
+        ]
+      })
+    );
+  });
+
   it("extracts Gemini user and assistant messages", async () => {
     loadFixture("gemini-sample.html", "https://gemini.google.com/app/age-fx");
 

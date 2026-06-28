@@ -21,8 +21,9 @@ import {
   listEquipmentItems,
   updateEquipmentState
 } from "./equipment/equipmentRepository.js";
-import { createContentHash } from "./hash.js";
+import { createAttachmentHash, createContentHash } from "./hash.js";
 import {
+  insertCapturedAttachments,
   insertCapturedMessage,
   listMessagesForDate
 } from "./messages/messageRepository.js";
@@ -109,6 +110,19 @@ function hostMatchesSource(source: "chatgpt" | "gemini", pageUrl: string): boole
   return host === expectedHost || host.endsWith(`.${expectedHost}`);
 }
 
+const capturedAttachmentSchema = z.object({
+  source: z.enum(["chatgpt", "gemini"]),
+  messageContentHash: z.string().regex(sha256HexPattern),
+  attachmentType: z.enum(["image", "file", "link"]),
+  label: z.string().min(1),
+  url: z.string().url().nullable(),
+  mimeType: z.string().nullable(),
+  visibleText: z.string().nullable(),
+  extractedText: z.string().nullable(),
+  analysisText: z.string().nullable(),
+  attachmentHash: z.string().regex(sha256HexPattern)
+});
+
 const capturedMessageSchema = z
   .object({
     source: z.enum(["chatgpt", "gemini"]),
@@ -120,7 +134,8 @@ const capturedMessageSchema = z
     pageUrl: z.string().url(),
     messageRole: z.enum(["user", "assistant", "unknown"]),
     messageText: z.string().min(1),
-    contentHash: z.string().regex(sha256HexPattern)
+    contentHash: z.string().regex(sha256HexPattern),
+    attachments: z.array(capturedAttachmentSchema).optional()
   })
   .superRefine((message, context) => {
     if (!hostMatchesSource(message.source, message.pageUrl)) {
@@ -129,6 +144,24 @@ const capturedMessageSchema = z
         message: "pageUrl host must match source",
         path: ["pageUrl"]
       });
+    }
+
+    for (const [index, attachment] of (message.attachments ?? []).entries()) {
+      if (attachment.source !== message.source) {
+        context.addIssue({
+          code: z.ZodIssueCode.custom,
+          message: "attachment source must match message source",
+          path: ["attachments", index, "source"]
+        });
+      }
+
+      if (attachment.messageContentHash !== message.contentHash) {
+        context.addIssue({
+          code: z.ZodIssueCode.custom,
+          message: "attachment messageContentHash must match message contentHash",
+          path: ["attachments", index, "messageContentHash"]
+        });
+      }
     }
   });
 
@@ -270,6 +303,8 @@ export function createServer(
     let inserted = 0;
     let duplicates = 0;
     let merged = 0;
+    let insertedAttachments = 0;
+    let duplicateAttachments = 0;
 
     try {
       for (const message of parsedPayload.data.messages) {
@@ -295,10 +330,40 @@ export function createServer(
           return;
         }
 
+        for (const attachment of message.attachments ?? []) {
+          const recomputedAttachmentHash = createAttachmentHash(attachment);
+
+          if (attachment.attachmentHash.toLowerCase() !== recomputedAttachmentHash) {
+            res.status(400).json({
+              error: "attachment_hash_mismatch",
+              details: {
+                suppliedHash: attachment.attachmentHash,
+                recomputedHash: recomputedAttachmentHash,
+                source: attachment.source,
+                messageContentHash: attachment.messageContentHash,
+                attachmentType: attachment.attachmentType,
+                labelLength: attachment.label.length
+              }
+            });
+            return;
+          }
+        }
+
         const result = insertCapturedMessage(db, {
           ...message,
           contentHash: recomputedHash
         });
+
+        const attachmentResult = insertCapturedAttachments(
+          db,
+          { ...message, contentHash: recomputedHash },
+          (message.attachments ?? []).map((attachment) => ({
+            ...attachment,
+            attachmentHash: createAttachmentHash(attachment)
+          }))
+        );
+        insertedAttachments += attachmentResult.inserted;
+        duplicateAttachments += attachmentResult.duplicates;
 
         if (result.inserted) {
           inserted += 1;
@@ -313,7 +378,12 @@ export function createServer(
       return;
     }
 
-    res.json({ inserted, duplicates, merged });
+    const responseBody =
+      insertedAttachments > 0 || duplicateAttachments > 0
+        ? { inserted, duplicates, merged, insertedAttachments, duplicateAttachments }
+        : { inserted, duplicates, merged };
+
+    res.json(responseBody);
   });
 
   function handleAnalysisError(error: unknown, res: express.Response): void {

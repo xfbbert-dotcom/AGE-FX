@@ -166,8 +166,32 @@
     });
   }
 
+  function normalizeNullableText(text) {
+    const normalized = normalizeMessageText(text);
+
+    return normalized.length > 0 ? normalized : null;
+  }
+
+  function attachmentHashPreimage(input) {
+    return JSON.stringify({
+      source: input.source,
+      messageContentHash: String(input.messageContentHash ?? "").trim().toLowerCase(),
+      attachmentType: input.attachmentType,
+      label: normalizeMessageText(input.label),
+      url: normalizeNullableText(input.url),
+      mimeType: normalizeNullableText(input.mimeType),
+      visibleText: normalizeNullableText(input.visibleText),
+      extractedText: normalizeNullableText(input.extractedText),
+      analysisText: normalizeNullableText(input.analysisText)
+    });
+  }
+
   function createContentHash(input) {
     return sha256Hex(contentHashPreimage(input));
+  }
+
+  function createAttachmentHash(input) {
+    return sha256Hex(attachmentHashPreimage(input));
   }
 
   function visibleText(element) {
@@ -184,6 +208,145 @@
     const title = normalizeMessageText(root.document?.title ?? "");
 
     return title.length > 0 ? title : null;
+  }
+
+  function absoluteUrl(value) {
+    const normalized = normalizeNullableText(value);
+
+    if (!normalized) {
+      return null;
+    }
+
+    try {
+      return new URL(normalized, root.location?.href).href;
+    } catch {
+      return normalized;
+    }
+  }
+
+  function inferMimeTypeFromUrl(url) {
+    const normalized = normalizeNullableText(url)?.toLowerCase();
+
+    if (!normalized) {
+      return null;
+    }
+
+    if (/\.(png|apng)(?:[?#]|$)/.test(normalized)) return "image/png";
+    if (/\.(jpe?g)(?:[?#]|$)/.test(normalized)) return "image/jpeg";
+    if (/\.(gif)(?:[?#]|$)/.test(normalized)) return "image/gif";
+    if (/\.(webp)(?:[?#]|$)/.test(normalized)) return "image/webp";
+    if (/\.(pdf)(?:[?#]|$)/.test(normalized)) return "application/pdf";
+    if (/\.(docx)(?:[?#]|$)/.test(normalized)) {
+      return "application/vnd.openxmlformats-officedocument.wordprocessingml.document";
+    }
+    if (/\.(xlsx)(?:[?#]|$)/.test(normalized)) {
+      return "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet";
+    }
+    if (/\.(txt)(?:[?#]|$)/.test(normalized)) return "text/plain";
+    if (/\.(md|markdown)(?:[?#]|$)/.test(normalized)) return "text/markdown";
+
+    return null;
+  }
+
+  function isFileLikeLink(link) {
+    const href = link.getAttribute("href") ?? "";
+    const label = visibleText(link);
+    const download = link.getAttribute("download");
+    const combined = `${href} ${label} ${download ?? ""}`.toLowerCase();
+
+    return Boolean(
+      download ||
+        /\.(pdf|docx?|xlsx?|pptx?|txt|md|markdown|csv|zip|png|jpe?g|gif|webp)(?:[?#\s]|$)/i.test(
+          combined
+        ) ||
+        /\/(?:file|files|attachment|download|backend-api)\b/i.test(combined)
+    );
+  }
+
+  function uniqueAttachments(attachments) {
+    const seen = new Set();
+    const unique = [];
+
+    for (const attachment of attachments) {
+      const key = [
+        attachment.attachmentType,
+        attachment.url ?? "",
+        attachment.label,
+        attachment.visibleText ?? ""
+      ].join("|");
+
+      if (seen.has(key)) {
+        continue;
+      }
+
+      seen.add(key);
+      unique.push(attachment);
+    }
+
+    return unique;
+  }
+
+  async function extractMessageAttachments(element, baseMessage) {
+    const attachments = [];
+
+    for (const image of element.querySelectorAll("img")) {
+      const src = absoluteUrl(image.currentSrc || image.src || image.getAttribute("src"));
+      const alt = normalizeNullableText(image.getAttribute("alt"));
+      const title = normalizeNullableText(image.getAttribute("title"));
+      const label = alt || title || "visible image";
+      const visibleText = alt || title || label;
+
+      if (!src && !visibleText) {
+        continue;
+      }
+
+      attachments.push({
+        source: baseMessage.source,
+        messageContentHash: baseMessage.contentHash,
+        attachmentType: "image",
+        label,
+        url: src,
+        mimeType: inferMimeTypeFromUrl(src) ?? "image/unknown",
+        visibleText,
+        extractedText: null,
+        analysisText: null
+      });
+    }
+
+    for (const link of element.querySelectorAll("a[href]")) {
+      if (!isFileLikeLink(link)) {
+        continue;
+      }
+
+      const href = absoluteUrl(link.getAttribute("href"));
+      const label =
+        normalizeNullableText(visibleText(link)) ||
+        normalizeNullableText(link.getAttribute("download")) ||
+        normalizeNullableText(href) ||
+        "visible file";
+      const mimeType = normalizeNullableText(link.getAttribute("type")) ?? inferMimeTypeFromUrl(href);
+
+      attachments.push({
+        source: baseMessage.source,
+        messageContentHash: baseMessage.contentHash,
+        attachmentType: mimeType?.startsWith("image/") ? "image" : "file",
+        label,
+        url: href,
+        mimeType,
+        visibleText: label,
+        extractedText: null,
+        analysisText: null
+      });
+    }
+
+    const unique = uniqueAttachments(attachments);
+
+    return Promise.all(
+      unique.map(async (attachment) => ({
+        ...attachment,
+        attachmentHash: await createAttachmentHash(attachment)
+      }))
+    );
   }
 
   function uniqueElements(elements) {
@@ -306,10 +469,16 @@
         messageRole: role,
         messageText
       };
+      const contentHash = await createContentHash(baseMessage);
+      const messageWithHash = {
+        ...baseMessage,
+        contentHash
+      };
+      const attachments = await extractMessageAttachments(element, messageWithHash);
 
       messages.push({
-        ...baseMessage,
-        contentHash: await createContentHash(baseMessage)
+        ...messageWithHash,
+        ...(attachments.length > 0 ? { attachments } : {})
       });
     }
 
@@ -448,6 +617,7 @@
 
   const api = {
     createContentHash,
+    createAttachmentHash,
     detectSource,
     extractVisibleMessages,
     filterUnsentMessages,

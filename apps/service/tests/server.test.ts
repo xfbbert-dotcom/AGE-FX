@@ -5,7 +5,7 @@ import type { DatabaseSync } from "node:sqlite";
 import request from "supertest";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { openAgeDatabase } from "../src/db/client.js";
-import { createContentHash } from "../src/hash.js";
+import { createAttachmentHash, createContentHash } from "../src/hash.js";
 import { createServer, localIsoDate } from "../src/server.js";
 import { analyzeDailyBattle } from "../src/analysis/analyzer.js";
 
@@ -107,6 +107,58 @@ describe("local companion service API", () => {
       .expect(({ body }) => {
         expect(body).toEqual({ inserted: 0, duplicates: 1, merged: 0 });
       });
+  });
+
+  it("captures attachments bound to the message content hash", async () => {
+    const app = createTestApp();
+    const message = createCapturedMessage({
+      messageText: "请把这张图和这份文件作为当前想法的素材。"
+    });
+    const attachment = {
+      source: "chatgpt" as const,
+      messageContentHash: message.contentHash,
+      attachmentType: "image" as const,
+      label: "AGE-FX system diagram",
+      url: "https://chatgpt.com/files/age-fx.png",
+      mimeType: "image/png",
+      visibleText: "AGE-FX system diagram",
+      extractedText: null,
+      analysisText: null
+    };
+
+    await request(app)
+      .post("/api/capture")
+      .send({
+        messages: [
+          {
+            ...message,
+            attachments: [
+              {
+                ...attachment,
+                attachmentHash: createAttachmentHash(attachment)
+              }
+            ]
+          }
+        ]
+      })
+      .expect(200)
+      .expect(({ body }) => {
+        expect(body).toEqual({
+          inserted: 1,
+          duplicates: 0,
+          merged: 0,
+          insertedAttachments: 1,
+          duplicateAttachments: 0
+        });
+      });
+
+    expect(listStoredAttachments()).toEqual([
+      expect.objectContaining({
+        message_content_hash: message.contentHash,
+        attachment_type: "image",
+        label: "AGE-FX system diagram"
+      })
+    ]);
   });
 
   it("reports merged streaming assistant captures", async () => {
@@ -796,6 +848,24 @@ describe("local companion service API", () => {
         ?.prepare("SELECT content_hash FROM captured_messages ORDER BY id")
         .all()
         .map((row) => (row as { content_hash: string }).content_hash) ?? []
+    );
+  }
+
+  function listStoredAttachments(): Array<{
+    message_content_hash: string;
+    attachment_type: string;
+    label: string;
+  }> {
+    return (
+      (db
+        ?.prepare(
+          "SELECT message_content_hash, attachment_type, label FROM captured_attachments ORDER BY id"
+        )
+        .all() as Array<{
+        message_content_hash: string;
+        attachment_type: string;
+        label: string;
+      }>) ?? []
     );
   }
 
