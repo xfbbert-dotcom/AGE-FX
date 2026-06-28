@@ -6,8 +6,18 @@ import { fileURLToPath } from "node:url";
 const repoRoot = fileURLToPath(new URL("..", import.meta.url));
 const exePath = join(repoRoot, "dist", "AGE-FX-Desktop-win32-x64", "AGE-FX.exe");
 const workingDirectory = join(repoRoot, "dist", "AGE-FX-Desktop-win32-x64");
+const iconPath = join(
+  workingDirectory,
+  "resources",
+  "app",
+  "apps",
+  "desktop",
+  "assets",
+  "age-fx-icon.ico"
+);
 
 await access(exePath);
+await access(iconPath);
 
 const script = `
 $desktop = [Environment]::GetFolderPath('Desktop')
@@ -17,7 +27,7 @@ $shortcut = $shell.CreateShortcut($shortcutPath)
 $shortcut.TargetPath = '${exePath.replaceAll("'", "''")}'
 $shortcut.WorkingDirectory = '${workingDirectory.replaceAll("'", "''")}'
 $shortcut.Description = 'AGE-FX Thought Console'
-$shortcut.IconLocation = '${exePath.replaceAll("'", "''")},0'
+$shortcut.IconLocation = '${iconPath.replaceAll("'", "''")}'
 $shortcut.Save()
 Write-Output $shortcutPath
 `.trim();

@@ -33,6 +33,8 @@ const builtServiceEntry = join(repoRoot, "dist", "service", "index.js");
 const sourceServiceEntry = join(repoRoot, "apps", "service", "src", "index.ts");
 const tsxCli = join(repoRoot, "node_modules", "tsx", "dist", "cli.mjs");
 const nodePath = process.env.AGE_FX_NODE_PATH ?? process.env.npm_node_execpath ?? "node";
+const appIconPng = join(__dirname, "assets", "age-fx-icon.png");
+const appIconIco = join(__dirname, "assets", "age-fx-icon.ico");
 
 let serviceProcess = null;
 let mainWindow = null;
@@ -173,9 +175,11 @@ function createTray() {
     return;
   }
 
-  const icon = nativeImage.createFromDataURL(
-    `data:image/svg+xml;charset=utf-8,${encodeURIComponent(trayIconSvg)}`
-  );
+  const icon = existsSync(appIconPng)
+    ? nativeImage.createFromPath(appIconPng).resize({ width: 16, height: 16 })
+    : nativeImage.createFromDataURL(
+        `data:image/svg+xml;charset=utf-8,${encodeURIComponent(trayIconSvg)}`
+      );
 
   tray = new Tray(icon);
   tray.setToolTip("AGE-FX Thought Console");
@@ -214,6 +218,7 @@ async function createWindow() {
     minWidth: 960,
     minHeight: 640,
     backgroundColor: "#eadece",
+    icon: existsSync(appIconIco) ? appIconIco : appIconPng,
     title: "AGE-FX Thought Console",
     webPreferences: {
       preload: join(__dirname, "preload.cjs"),
