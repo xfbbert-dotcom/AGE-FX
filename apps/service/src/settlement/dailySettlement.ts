@@ -43,6 +43,39 @@ export async function settleDailyBattle(
   return { analysis, equipment };
 }
 
+export function listPendingSettlementDates(db: DatabaseSync, now = new Date()): string[] {
+  const today = localIsoDate(now);
+  const rows = db
+    .prepare(
+      `
+        SELECT DISTINCT captured_messages.conversation_date AS analysis_date
+        FROM captured_messages
+        LEFT JOIN daily_analyses
+          ON daily_analyses.analysis_date = captured_messages.conversation_date
+        WHERE captured_messages.conversation_date < $today
+          AND daily_analyses.id IS NULL
+        ORDER BY captured_messages.conversation_date ASC
+      `
+    )
+    .all({ $today: today }) as unknown as Array<{ analysis_date: string }>;
+
+  return rows.map((row) => row.analysis_date);
+}
+
+export async function settlePendingBattles(
+  db: DatabaseSync,
+  now = new Date(),
+  analysisEngine: AnalysisEngine = createOpenAiAnalysisEngine()
+) {
+  const settled = [];
+
+  for (const analysisDate of listPendingSettlementDates(db, now)) {
+    settled.push(await settleDailyBattle(db, analysisDate, analysisEngine));
+  }
+
+  return settled;
+}
+
 export interface ScheduledSettlement {
   stop(): void;
 }
@@ -52,6 +85,10 @@ export function scheduleMidnightSettlement(
   analysisEngine: AnalysisEngine = createOpenAiAnalysisEngine()
 ): ScheduledSettlement {
   let dailyTimer: NodeJS.Timeout | null = null;
+
+  settlePendingBattles(db, new Date(), analysisEngine).catch((error: unknown) => {
+    console.error("AGE-FX startup settlement backfill failed", error);
+  });
 
   const runAndScheduleNext = () => {
     const analysisDate = previousLocalIsoDate();

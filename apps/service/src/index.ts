@@ -2,6 +2,7 @@ import { DEFAULT_DATA_ROOT, DEFAULT_SERVICE_PORT } from "./config.js";
 import { openAgeDatabase } from "./db/client.js";
 import { loadRuntimeEnv, serviceEnvPath } from "./runtimeConfig.js";
 import { createServer } from "./server.js";
+import { createOpenAiAnalysisEngine } from "./analysis/llmAnalyzer.js";
 import { scheduleMidnightSettlement } from "./settlement/dailySettlement.js";
 
 const dataRoot = process.env.AGE_FX_DATA_ROOT ?? DEFAULT_DATA_ROOT;
@@ -10,7 +11,15 @@ const port = parseServicePort(runtimeEnv.PORT);
 
 const db = openAgeDatabase(dataRoot);
 const app = createServer(db, dataRoot, { env: runtimeEnv });
-scheduleMidnightSettlement(db);
+scheduleMidnightSettlement(
+  db,
+  createOpenAiAnalysisEngine({
+    apiKey: runtimeEnv.AGE_FX_OPENAI_API_KEY,
+    baseUrl: runtimeEnv.AGE_FX_OPENAI_BASE_URL,
+    model: runtimeEnv.AGE_FX_OPENAI_MODEL,
+    protocol: runtimeEnv.AGE_FX_OPENAI_PROTOCOL
+  })
+);
 
 app.listen(port, "127.0.0.1", () => {
   console.log(`AGE-FX companion service listening at http://127.0.0.1:${port}`);
