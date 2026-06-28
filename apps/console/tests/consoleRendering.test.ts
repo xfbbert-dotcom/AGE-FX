@@ -220,6 +220,19 @@ describe("console rendering", () => {
     expect(document.body.textContent).not.toContain("Tomorrow Threads");
   });
 
+  it("breaks a long single-block thought summary into readable paragraphs", () => {
+    document.body.innerHTML = `<main id="app"></main>`;
+    const analysis = createAnalysis();
+
+    renderAnalysis({
+      ...analysis,
+      thoughtSummary:
+        "第一层，今天的思考不是在寻找一个普通界面，而是在反复确认系统如何承接长期自我进化。这个问题背后真正的矛盾，是你希望工具既能自动运行，又不能剥夺你对判断的主权。第二层，模型回复提供了很多技术路径，但真正重要的不是路径数量，而是哪些路径可以稳定沉淀成日常仪式。第三层，未闭环的问题仍然是如何让装备打印从一次性灵感变成可复用流程。明天最值得继续推进的是启动补结算、分析呈现和装备确认之间的关系。"
+    });
+
+    expect(document.querySelectorAll(".summary-copy p").length).toBeGreaterThan(1);
+  });
+
   it("renders Chinese UI labels by default", () => {
     document.body.innerHTML = `<main id="app"></main>`;
 

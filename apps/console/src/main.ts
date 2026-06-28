@@ -368,10 +368,7 @@ function fallbackThoughtSummary(analysis: DailyBattleAnalysis): string {
 
 function renderThoughtSummary(analysis: DailyBattleAnalysis): string {
   const summary = analysis.thoughtSummary?.trim() || fallbackThoughtSummary(analysis);
-  const paragraphs = summary
-    .split(/\n{2,}/)
-    .map((paragraph) => paragraph.trim())
-    .filter((paragraph) => paragraph.length > 0);
+  const paragraphs = createReadableParagraphs(summary);
 
   return `
     <section class="summary-panel" id="battle-analysis" aria-label="Daily battle summary">
@@ -382,6 +379,69 @@ function renderThoughtSummary(analysis: DailyBattleAnalysis): string {
       </div>
     </section>
   `;
+}
+
+function createReadableParagraphs(summary: string): string[] {
+  const normalized = summary
+    .replace(/\r\n/g, "\n")
+    .replace(/\n{3,}/g, "\n\n")
+    .trim();
+  const explicitParagraphs = normalized
+    .split(/\n{2,}/)
+    .map((paragraph) => paragraph.trim())
+    .filter((paragraph) => paragraph.length > 0);
+
+  if (explicitParagraphs.length > 1) {
+    return explicitParagraphs.flatMap(splitLongParagraph);
+  }
+
+  return splitLongParagraph(explicitParagraphs[0] ?? normalized);
+}
+
+function splitLongParagraph(paragraph: string): string[] {
+  const prepared = paragraph
+    .replace(/\s*\n\s*/g, " ")
+    .replace(
+      /\s*(?=(?:第[一二三四五六七八九十\d]+[层点步]|首先|其次|然后|最后|明天|今日|今天|未来|结论|因此|所以)[，、:：])/g,
+      "\n\n"
+    )
+    .trim();
+  const markedParagraphs = prepared
+    .split(/\n{2,}/)
+    .map((item) => item.trim())
+    .filter((item) => item.length > 0);
+
+  if (markedParagraphs.length > 1) {
+    return markedParagraphs.flatMap(groupSentences);
+  }
+
+  return groupSentences(prepared);
+}
+
+function groupSentences(paragraph: string): string[] {
+  const sentences = paragraph
+    .match(/[^。！？!?；;]+[。！？!?；;]?/g)
+    ?.map((sentence) => sentence.trim())
+    .filter((sentence) => sentence.length > 0) ?? [paragraph];
+  const groups: string[] = [];
+  let current = "";
+
+  for (const sentence of sentences) {
+    const next = current ? `${current}${sentence}` : sentence;
+
+    if (current && next.length > 230) {
+      groups.push(current);
+      current = sentence;
+    } else {
+      current = next;
+    }
+  }
+
+  if (current) {
+    groups.push(current);
+  }
+
+  return groups;
 }
 
 function firstEquipment(

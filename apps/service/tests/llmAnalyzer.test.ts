@@ -229,6 +229,7 @@ describe("OpenAI LLM analysis engine", () => {
     expect(prompt).toContain("Return only one valid JSON object");
     expect(prompt).toContain("AGE-FX 核心系统智脑");
     expect(prompt).toContain("Analysis date: 2026-06-20");
+    expect(prompt).toContain("thoughtSummary must be readable and naturally segmented");
     expect(prompt).toContain("source=chatgpt");
     expect(prompt).toContain("role=user");
     expect(prompt).toContain("Manual bridge should preserve the battle log.");

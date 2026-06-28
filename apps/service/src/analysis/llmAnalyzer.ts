@@ -260,6 +260,7 @@ export function buildAnalysisUserPrompt(
 ): string {
   return [
     `Analysis date: ${analysisDate}`,
+    "Formatting rule: thoughtSummary must be readable and naturally segmented. Use 4-7 paragraphs separated by two newline characters. Each paragraph should carry one clear logical move: underlying tension, non-consensus insight, AI reply contribution, unresolved cliff, tomorrow trigger. Do not return one dense block of prose.",
     "Thought Battle Logs:",
     buildBattleLog(messages)
   ].join("\n\n");
