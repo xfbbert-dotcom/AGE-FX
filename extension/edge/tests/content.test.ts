@@ -189,6 +189,71 @@ describe("Edge extension content capture", () => {
     );
   });
 
+  it("extracts readable text from simple uploaded PDF snapshots", async () => {
+    const file = {
+      name: "strategy.pdf",
+      type: "application/pdf",
+      size: 128,
+      arrayBuffer: async () =>
+        new TextEncoder().encode(
+          "%PDF-1.7\n1 0 obj\n<<>>\nstream\nBT (AGE PDF insight) Tj ET\nendstream\nendobj"
+        ).buffer
+    };
+    const dom = new JSDOM(
+      `<!doctype html>
+      <title>AGE-FX PDF Upload Sample</title>
+      <main>
+        <article data-message-author-role="user"><p>Analyze the uploaded PDF.</p></article>
+      </main>`,
+      { url: "https://chatgpt.com/c/age-fx" }
+    );
+    globalThis.document = dom.window.document;
+
+    await rememberSelectedFiles([file]);
+    const messages = await extractVisibleMessages("https://chatgpt.com/c/age-fx");
+
+    expect(messages[0].attachments?.[0]).toEqual(
+      expect.objectContaining({
+        attachmentType: "file",
+        label: "strategy.pdf",
+        mimeType: "application/pdf",
+        extractedText: expect.stringContaining("AGE PDF insight"),
+        analysisText: expect.stringContaining("PDF text preview")
+      })
+    );
+  });
+
+  it("records image uploads as visual materials with local metadata", async () => {
+    const file = {
+      name: "concept.png",
+      type: "image/png",
+      size: 2048,
+      arrayBuffer: async () => new Uint8Array([137, 80, 78, 71]).buffer
+    };
+    const dom = new JSDOM(
+      `<!doctype html>
+      <title>AGE-FX Image Upload Sample</title>
+      <main>
+        <article data-message-author-role="user"><p>Analyze the uploaded image.</p></article>
+      </main>`,
+      { url: "https://chatgpt.com/c/age-fx" }
+    );
+    globalThis.document = dom.window.document;
+
+    await rememberSelectedFiles([file]);
+    const messages = await extractVisibleMessages("https://chatgpt.com/c/age-fx");
+
+    expect(messages[0].attachments?.[0]).toEqual(
+      expect.objectContaining({
+        attachmentType: "image",
+        label: "concept.png",
+        mimeType: "image/png",
+        extractedText: null,
+        analysisText: "Local image upload captured for message binding. File size: 2048 bytes."
+      })
+    );
+  });
+
   it("extracts Gemini user and assistant messages", async () => {
     loadFixture("gemini-sample.html", "https://gemini.google.com/app/age-fx");
 

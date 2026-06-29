@@ -266,18 +266,76 @@
     );
   }
 
-  async function readFileTextPreview(file) {
-    if (!isTextLikeFile(file) || typeof file?.text !== "function") {
+  function isPdfFile(file) {
+    const type = normalizeNullableText(file?.type)?.toLowerCase() ?? "";
+    const name = normalizeNullableText(file?.name)?.toLowerCase() ?? "";
+
+    return type === "application/pdf" || /\.pdf$/i.test(name);
+  }
+
+  function decodePdfEscapes(value) {
+    return value
+      .replace(/\\n/g, "\n")
+      .replace(/\\r/g, "\r")
+      .replace(/\\t/g, "\t")
+      .replace(/\\\(/g, "(")
+      .replace(/\\\)/g, ")")
+      .replace(/\\\\/g, "\\");
+  }
+
+  async function readPdfTextPreview(file) {
+    if (!isPdfFile(file) || typeof file?.arrayBuffer !== "function") {
       return null;
     }
 
     try {
-      const text = await file.text();
+      const bytes = new Uint8Array(await file.arrayBuffer());
+      const binaryText = new TextDecoder("latin1").decode(bytes);
+      const literalStrings = [...binaryText.matchAll(/\(((?:\\.|[^\\)]){2,})\)/g)]
+        .map((match) => decodePdfEscapes(match[1]))
+        .filter((value) => /[A-Za-z0-9\u0080-\uffff]{3,}/.test(value));
+      const streamText = literalStrings.join("\n").replace(/\s+\n/g, "\n").trim();
 
-      return String(text).slice(0, MAX_EXTRACTED_TEXT_CHARS);
+      return streamText.length > 0 ? streamText.slice(0, MAX_EXTRACTED_TEXT_CHARS) : null;
     } catch {
       return null;
     }
+  }
+
+  async function readFileTextPreview(file) {
+    if (isPdfFile(file)) {
+      return readPdfTextPreview(file);
+    }
+
+    if (isTextLikeFile(file) && typeof file?.text === "function") {
+      try {
+        const text = await file.text();
+
+        return String(text).slice(0, MAX_EXTRACTED_TEXT_CHARS);
+      } catch {
+        return null;
+      }
+    }
+
+    return null;
+  }
+
+  function uploadAnalysisText(file, mimeType, extractedText) {
+    const size = Number(file?.size ?? 0);
+
+    if (mimeType?.startsWith("image/")) {
+      return `Local image upload captured for message binding. File size: ${size} bytes.`;
+    }
+
+    if (isPdfFile(file)) {
+      return extractedText
+        ? `PDF text preview extracted locally. File size: ${size} bytes.`
+        : `PDF upload captured for message binding, but no readable text layer was found locally. File size: ${size} bytes.`;
+    }
+
+    return extractedText === null
+      ? `Local upload captured for message binding. File size: ${size} bytes.`
+      : null;
   }
 
   async function rememberSelectedFiles(files) {
@@ -295,19 +353,17 @@
       const name = normalizeNullableText(file?.name) ?? "local upload";
       const mimeType = normalizeNullableText(file?.type) ?? inferMimeTypeFromUrl(name);
       const extractedText = await readFileTextPreview(file);
+      const attachmentType = mimeType?.startsWith("image/") ? "image" : "file";
 
       snapshots.push({
         source,
-        attachmentType: mimeType?.startsWith("image/") ? "image" : "file",
+        attachmentType,
         label: name,
         url: null,
         mimeType,
         visibleText: `local upload: ${name}`,
         extractedText,
-        analysisText:
-          extractedText === null
-            ? `Local upload captured for message binding. File size: ${Number(file?.size ?? 0)} bytes.`
-            : null
+        analysisText: uploadAnalysisText(file, mimeType, extractedText)
       });
     }
 
