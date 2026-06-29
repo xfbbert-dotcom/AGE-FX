@@ -44,6 +44,7 @@ export interface CapturedAttachmentInput {
   visibleText: string | null;
   extractedText: string | null;
   analysisText: string | null;
+  snapshotDataUrl: string | null;
   attachmentHash: string;
 }
 
@@ -73,6 +74,7 @@ interface CapturedAttachmentRow {
   visible_text: string | null;
   extracted_text: string | null;
   analysis_text: string | null;
+  snapshot_data_url: string | null;
   attachment_hash: string;
 }
 
@@ -162,6 +164,7 @@ export function insertCapturedAttachments(
           visible_text,
           extracted_text,
           analysis_text,
+          snapshot_data_url,
           attachment_hash
         ) VALUES (
           $source,
@@ -176,6 +179,7 @@ export function insertCapturedAttachments(
           $visibleText,
           $extractedText,
           $analysisText,
+          $snapshotDataUrl,
           $attachmentHash
         )
         ON CONFLICT(attachment_hash) DO NOTHING
@@ -193,6 +197,7 @@ export function insertCapturedAttachments(
         $visibleText: attachment.visibleText,
         $extractedText: attachment.extractedText,
         $analysisText: attachment.analysisText,
+        $snapshotDataUrl: attachment.snapshotDataUrl,
         $attachmentHash: attachment.attachmentHash
       });
 
@@ -320,6 +325,7 @@ export function listAttachmentsForDate(
         visible_text,
         extracted_text,
         analysis_text,
+        snapshot_data_url,
         attachment_hash
       FROM captured_attachments
       WHERE conversation_date = $conversationDate
@@ -359,6 +365,7 @@ function mapCapturedAttachmentRow(row: CapturedAttachmentRow): CapturedAttachmen
     visibleText: row.visible_text,
     extractedText: row.extracted_text,
     analysisText: row.analysis_text,
+    snapshotDataUrl: row.snapshot_data_url,
     attachmentHash: row.attachment_hash
   };
 }

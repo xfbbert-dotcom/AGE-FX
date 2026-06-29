@@ -258,6 +258,7 @@ describe("OpenAI LLM analysis engine", () => {
             visibleText: "AGE-FX system diagram",
             extractedText: null,
             analysisText: "Image preview shows AGE-FX funnels around a central logo.",
+            snapshotDataUrl: "data:image/png;base64,iVBORw==",
             attachmentHash: "c".repeat(64)
           }
         ]
@@ -268,6 +269,8 @@ describe("OpenAI LLM analysis engine", () => {
     expect(log).toContain("attachmentType=image");
     expect(log).toContain("label=AGE-FX system diagram");
     expect(log).toContain("analysisText=Image preview shows AGE-FX funnels");
+    expect(log).toContain("snapshotDataUrlLength=30");
+    expect(log).not.toContain("iVBORw");
   });
 
   it("parses fenced JSON pasted back from a manual web model", () => {

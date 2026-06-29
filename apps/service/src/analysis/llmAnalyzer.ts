@@ -207,7 +207,8 @@ export function buildBattleLog(messages: CapturedMessageRecord[]): string {
         `mimeType=${attachment.mimeType ?? "null"}`,
         `visibleText=${attachment.visibleText ?? "null"}`,
         `extractedText=${attachment.extractedText ?? "null"}`,
-        `analysisText=${attachment.analysisText ?? "null"}`
+        `analysisText=${attachment.analysisText ?? "null"}`,
+        `snapshotDataUrlLength=${attachment.snapshotDataUrl?.length ?? 0}`
       ]);
 
       return [

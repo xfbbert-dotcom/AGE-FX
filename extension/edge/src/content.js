@@ -3,6 +3,7 @@
   const CAPTURE_MESSAGE_TYPE = "AGE_FX_CAPTURE";
   const INDICATOR_ID = "age-fx-capture-indicator";
   const MAX_EXTRACTED_TEXT_CHARS = 30000;
+  const MAX_SNAPSHOT_BYTES = 1024 * 1024;
   const sentHashes = new Set();
   const pendingUploadSnapshots = [];
 
@@ -184,7 +185,8 @@
       mimeType: normalizeNullableText(input.mimeType),
       visibleText: normalizeNullableText(input.visibleText),
       extractedText: normalizeNullableText(input.extractedText),
-      analysisText: normalizeNullableText(input.analysisText)
+      analysisText: normalizeNullableText(input.analysisText),
+      snapshotDataUrl: normalizeNullableText(input.snapshotDataUrl)
     });
   }
 
@@ -342,6 +344,36 @@
     }
   }
 
+  function bytesToBase64(bytes) {
+    let binary = "";
+    const chunkSize = 0x8000;
+
+    for (let offset = 0; offset < bytes.length; offset += chunkSize) {
+      const chunk = bytes.subarray(offset, offset + chunkSize);
+      binary += String.fromCharCode(...chunk);
+    }
+
+    return root.btoa(binary);
+  }
+
+  async function imageSnapshotDataUrl(file, mimeType) {
+    if (
+      !mimeType?.startsWith("image/") ||
+      Number(file?.size ?? 0) > MAX_SNAPSHOT_BYTES ||
+      typeof file?.arrayBuffer !== "function"
+    ) {
+      return null;
+    }
+
+    try {
+      const bytes = new Uint8Array(await file.arrayBuffer());
+
+      return `data:${mimeType};base64,${bytesToBase64(bytes)}`;
+    } catch {
+      return null;
+    }
+  }
+
   function uploadAnalysisText(file, mimeType, extractedText, dimensions = null) {
     const size = Number(file?.size ?? 0);
 
@@ -380,6 +412,7 @@
       const mimeType = normalizeNullableText(file?.type) ?? inferMimeTypeFromUrl(name);
       const extractedText = await readFileTextPreview(file);
       const dimensions = await imageDimensions(file, mimeType);
+      const snapshotDataUrl = await imageSnapshotDataUrl(file, mimeType);
       const attachmentType = mimeType?.startsWith("image/") ? "image" : "file";
 
       snapshots.push({
@@ -390,6 +423,7 @@
         mimeType,
         visibleText: `local upload: ${name}`,
         extractedText,
+        snapshotDataUrl,
         analysisText: uploadAnalysisText(file, mimeType, extractedText, dimensions)
       });
     }

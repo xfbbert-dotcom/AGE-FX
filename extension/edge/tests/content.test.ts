@@ -263,6 +263,45 @@ describe("Edge extension content capture", () => {
     globalThis.createImageBitmap = previousCreateImageBitmap;
   });
 
+  it("stores a capped local data URL snapshot for small uploaded images", async () => {
+    const previousCreateImageBitmap = globalThis.createImageBitmap;
+    globalThis.createImageBitmap = async () =>
+      ({
+        width: 24,
+        height: 24,
+        close: () => undefined
+      }) as unknown as ImageBitmap;
+    const file = {
+      name: "small-concept.png",
+      type: "image/png",
+      size: 4,
+      arrayBuffer: async () => new Uint8Array([137, 80, 78, 71]).buffer
+    };
+    const dom = new JSDOM(
+      `<!doctype html>
+      <title>AGE-FX Small Image Upload Sample</title>
+      <main>
+        <article data-message-author-role="user"><p>Analyze the small image.</p></article>
+      </main>`,
+      { url: "https://chatgpt.com/c/age-fx" }
+    );
+    globalThis.document = dom.window.document;
+
+    await rememberSelectedFiles([file]);
+    const messages = await extractVisibleMessages("https://chatgpt.com/c/age-fx");
+
+    expect(messages[0].attachments?.[0]).toEqual(
+      expect.objectContaining({
+        attachmentType: "image",
+        label: "small-concept.png",
+        snapshotDataUrl: "data:image/png;base64,iVBORw==",
+        analysisText:
+          "Local image upload captured for message binding. File size: 4 bytes. Image dimensions: 24x24."
+      })
+    );
+    globalThis.createImageBitmap = previousCreateImageBitmap;
+  });
+
   it("extracts Gemini user and assistant messages", async () => {
     loadFixture("gemini-sample.html", "https://gemini.google.com/app/age-fx");
 

@@ -123,7 +123,8 @@ describe("local companion service API", () => {
       mimeType: "image/png",
       visibleText: "AGE-FX system diagram",
       extractedText: null,
-      analysisText: null
+      analysisText: null,
+      snapshotDataUrl: "data:image/png;base64,iVBORw=="
     };
 
     await request(app)
@@ -156,7 +157,8 @@ describe("local companion service API", () => {
       expect.objectContaining({
         message_content_hash: message.contentHash,
         attachment_type: "image",
-        label: "AGE-FX system diagram"
+        label: "AGE-FX system diagram",
+        snapshot_data_url: "data:image/png;base64,iVBORw=="
       })
     ]);
   });
@@ -855,16 +857,18 @@ describe("local companion service API", () => {
     message_content_hash: string;
     attachment_type: string;
     label: string;
+    snapshot_data_url: string | null;
   }> {
     return (
       (db
         ?.prepare(
-          "SELECT message_content_hash, attachment_type, label FROM captured_attachments ORDER BY id"
+          "SELECT message_content_hash, attachment_type, label, snapshot_data_url FROM captured_attachments ORDER BY id"
         )
         .all() as Array<{
         message_content_hash: string;
         attachment_type: string;
         label: string;
+        snapshot_data_url: string | null;
       }>) ?? []
     );
   }

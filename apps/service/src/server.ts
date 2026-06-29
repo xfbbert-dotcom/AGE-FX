@@ -120,6 +120,7 @@ const capturedAttachmentSchema = z.object({
   visibleText: z.string().nullable(),
   extractedText: z.string().nullable(),
   analysisText: z.string().nullable(),
+  snapshotDataUrl: z.string().nullable().optional().default(null),
   attachmentHash: z.string().regex(sha256HexPattern)
 });
 

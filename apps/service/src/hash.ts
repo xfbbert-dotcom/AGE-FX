@@ -22,6 +22,7 @@ export interface AttachmentHashInput {
   visibleText: string | null;
   extractedText: string | null;
   analysisText: string | null;
+  snapshotDataUrl?: string | null;
 }
 
 export function normalizeMessageText(text: string): string {
@@ -59,7 +60,8 @@ export function createAttachmentHash(input: AttachmentHashInput): string {
     mimeType: normalizeNullableText(input.mimeType),
     visibleText: normalizeNullableText(input.visibleText),
     extractedText: normalizeNullableText(input.extractedText),
-    analysisText: normalizeNullableText(input.analysisText)
+    analysisText: normalizeNullableText(input.analysisText),
+    snapshotDataUrl: normalizeNullableText(input.snapshotDataUrl)
   });
 
   return createHash("sha256").update(hashInput, "utf8").digest("hex");

@@ -88,6 +88,7 @@ describe("message repository", () => {
           visibleText: "AGE-FX concept image",
           extractedText: null,
           analysisText: null,
+          snapshotDataUrl: "data:image/png;base64,iVBORw==",
           attachmentHash: "a".repeat(64)
         },
         {
@@ -100,6 +101,7 @@ describe("message repository", () => {
           visibleText: "AGE whitepaper.pdf",
           extractedText: null,
           analysisText: null,
+          snapshotDataUrl: null,
           attachmentHash: "b".repeat(64)
         }
       ])
@@ -110,7 +112,8 @@ describe("message repository", () => {
         id: 1,
         messageContentHash: message.contentHash,
         attachmentType: "image",
-        label: "AGE-FX concept image"
+        label: "AGE-FX concept image",
+        snapshotDataUrl: "data:image/png;base64,iVBORw=="
       }),
       expect.objectContaining({
         id: 2,

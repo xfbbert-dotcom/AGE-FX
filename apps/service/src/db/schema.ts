@@ -31,6 +31,7 @@ export function applySchema(db: DatabaseSync): void {
       visible_text TEXT,
       extracted_text TEXT,
       analysis_text TEXT,
+      snapshot_data_url TEXT,
       attachment_hash TEXT NOT NULL UNIQUE
     );
 
@@ -63,4 +64,12 @@ export function applySchema(db: DatabaseSync): void {
       updated_at TEXT NOT NULL
     );
   `);
+
+  const attachmentColumns = db
+    .prepare("PRAGMA table_info(captured_attachments)")
+    .all() as Array<{ name: string }>;
+
+  if (!attachmentColumns.some((column) => column.name === "snapshot_data_url")) {
+    db.exec("ALTER TABLE captured_attachments ADD COLUMN snapshot_data_url TEXT");
+  }
 }
