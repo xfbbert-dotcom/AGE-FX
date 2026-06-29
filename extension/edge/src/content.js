@@ -2,7 +2,9 @@
   const CAPTURE_INTERVAL_MS = 5000;
   const CAPTURE_MESSAGE_TYPE = "AGE_FX_CAPTURE";
   const INDICATOR_ID = "age-fx-capture-indicator";
+  const MAX_EXTRACTED_TEXT_CHARS = 30000;
   const sentHashes = new Set();
+  const pendingUploadSnapshots = [];
 
   function detectSource(pageUrl) {
     let host;
@@ -248,6 +250,72 @@
     return null;
   }
 
+  function isTextLikeFile(file) {
+    const type = normalizeNullableText(file?.type)?.toLowerCase() ?? "";
+    const name = normalizeNullableText(file?.name)?.toLowerCase() ?? "";
+
+    return (
+      type.startsWith("text/") ||
+      [
+        "application/json",
+        "application/xml",
+        "application/yaml",
+        "application/x-yaml"
+      ].includes(type) ||
+      /\.(txt|md|markdown|csv|json|xml|yaml|yml|log)$/i.test(name)
+    );
+  }
+
+  async function readFileTextPreview(file) {
+    if (!isTextLikeFile(file) || typeof file?.text !== "function") {
+      return null;
+    }
+
+    try {
+      const text = await file.text();
+
+      return String(text).slice(0, MAX_EXTRACTED_TEXT_CHARS);
+    } catch {
+      return null;
+    }
+  }
+
+  async function rememberSelectedFiles(files) {
+    const source = detectSource(
+      root.document?.location?.href ?? root.document?.URL ?? root.location?.href
+    );
+
+    if (!source || !files) {
+      return [];
+    }
+
+    const snapshots = [];
+
+    for (const file of [...files]) {
+      const name = normalizeNullableText(file?.name) ?? "local upload";
+      const mimeType = normalizeNullableText(file?.type) ?? inferMimeTypeFromUrl(name);
+      const extractedText = await readFileTextPreview(file);
+
+      snapshots.push({
+        source,
+        attachmentType: mimeType?.startsWith("image/") ? "image" : "file",
+        label: name,
+        url: null,
+        mimeType,
+        visibleText: `local upload: ${name}`,
+        extractedText,
+        analysisText:
+          extractedText === null
+            ? `Local upload captured for message binding. File size: ${Number(file?.size ?? 0)} bytes.`
+            : null
+      });
+    }
+
+    pendingUploadSnapshots.push(...snapshots);
+
+    return snapshots;
+  }
+
   function isFileLikeLink(link) {
     const href = link.getAttribute("href") ?? "";
     const label = visibleText(link);
@@ -286,7 +354,22 @@
     return unique;
   }
 
-  async function extractMessageAttachments(element, baseMessage) {
+  function takePendingUploadSnapshotsForMessage(baseMessage, options = {}) {
+    if (
+      baseMessage.messageRole !== "user" ||
+      pendingUploadSnapshots.length === 0 ||
+      options.sentHashes?.has?.(baseMessage.contentHash)
+    ) {
+      return [];
+    }
+
+    return pendingUploadSnapshots.splice(0).map((snapshot) => ({
+      ...snapshot,
+      messageContentHash: baseMessage.contentHash
+    }));
+  }
+
+  async function extractMessageAttachments(element, baseMessage, options = {}) {
     const attachments = [];
 
     for (const image of element.querySelectorAll("img")) {
@@ -340,9 +423,10 @@
     }
 
     const unique = uniqueAttachments(attachments);
+    const pendingUploads = takePendingUploadSnapshotsForMessage(baseMessage, options);
 
     return Promise.all(
-      unique.map(async (attachment) => ({
+      [...unique, ...pendingUploads].map(async (attachment) => ({
         ...attachment,
         attachmentHash: await createAttachmentHash(attachment)
       }))
@@ -441,7 +525,7 @@
     }));
   }
 
-  async function extractVisibleMessages(pageUrl = root.location?.href) {
+  async function extractVisibleMessages(pageUrl = root.location?.href, options = {}) {
     const source = detectSource(pageUrl);
 
     if (!source || !root.document) {
@@ -474,7 +558,7 @@
         ...baseMessage,
         contentHash
       };
-      const attachments = await extractMessageAttachments(element, messageWithHash);
+      const attachments = await extractMessageAttachments(element, messageWithHash, options);
 
       messages.push({
         ...messageWithHash,
@@ -611,6 +695,17 @@
     }
 
     setIndicatorState("armed");
+    root.document.addEventListener(
+      "change",
+      (event) => {
+        const target = event.target;
+
+        if (target?.matches?.('input[type="file"]') && target.files?.length) {
+          void rememberSelectedFiles(target.files);
+        }
+      },
+      true
+    );
     root.setInterval(captureOnce, CAPTURE_INTERVAL_MS);
     void captureOnce();
   }
@@ -622,6 +717,8 @@
     extractVisibleMessages,
     filterUnsentMessages,
     formatLocalDate,
+    pendingUploadSnapshots,
+    rememberSelectedFiles,
     normalizeMessageText,
     sendCaptureMessage,
     sentHashes,

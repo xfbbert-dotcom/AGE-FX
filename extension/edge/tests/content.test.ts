@@ -9,6 +9,7 @@ import {
   extractVisibleMessages,
   filterUnsentMessages,
   formatLocalDate,
+  rememberSelectedFiles,
   normalizeMessageText
 } from "../src/content.js";
 
@@ -131,6 +132,57 @@ describe("Edge extension content capture", () => {
             url: "https://chatgpt.com/backend-api/files/whitepaper.pdf",
             visibleText: "AGE 系统白皮书.pdf",
             messageContentHash: messages[0].contentHash
+          })
+        ]
+      })
+    );
+  });
+
+  it("binds uploaded local text snapshots to the next unsent user message", async () => {
+    const oldHash = await createContentHash({
+      source: "chatgpt",
+      pageUrl: "https://chatgpt.com/c/age-fx",
+      messageRole: "user",
+      messageText: "旧问题"
+    });
+    const sentHashes = new Set([oldHash]);
+    const file = {
+      name: "AGE-notes.md",
+      type: "text/markdown",
+      size: 42,
+      text: async () => "# AGE Notes\n\n这份文件解释了 AGE 系统。"
+    };
+    const dom = new JSDOM(
+      `<!doctype html>
+      <title>AGE-FX Upload Sample</title>
+      <main>
+        <article data-message-author-role="user"><p>旧问题</p></article>
+        <article data-message-author-role="assistant"><p>旧回答</p></article>
+        <article data-message-author-role="user"><p>请结合刚上传的文件分析这个想法。</p></article>
+      </main>`,
+      { url: "https://chatgpt.com/c/age-fx" }
+    );
+    globalThis.document = dom.window.document;
+
+    await rememberSelectedFiles([file]);
+    const messages = await extractVisibleMessages("https://chatgpt.com/c/age-fx", {
+      sentHashes
+    });
+
+    expect(messages[0].messageText).toBe("旧问题");
+    expect(messages[0]).not.toHaveProperty("attachments");
+    expect(messages[2]).toEqual(
+      expect.objectContaining({
+        messageRole: "user",
+        messageText: "请结合刚上传的文件分析这个想法。",
+        attachments: [
+          expect.objectContaining({
+            attachmentType: "file",
+            label: "AGE-notes.md",
+            mimeType: "text/markdown",
+            visibleText: "local upload: AGE-notes.md",
+            extractedText: "# AGE Notes\n\n这份文件解释了 AGE 系统。",
+            messageContentHash: messages[2].contentHash
           })
         ]
       })
