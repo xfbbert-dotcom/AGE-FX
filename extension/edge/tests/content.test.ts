@@ -302,6 +302,62 @@ describe("Edge extension content capture", () => {
     globalThis.createImageBitmap = previousCreateImageBitmap;
   });
 
+  it("adds a local visual signature for uploaded images when canvas sampling is available", async () => {
+    const previousCreateImageBitmap = globalThis.createImageBitmap;
+    const previousOffscreenCanvas = globalThis.OffscreenCanvas;
+    globalThis.createImageBitmap = async () =>
+      ({
+        width: 2,
+        height: 1,
+        close: () => undefined
+      }) as unknown as ImageBitmap;
+    globalThis.OffscreenCanvas = class {
+      width: number;
+      height: number;
+
+      constructor(width: number, height: number) {
+        this.width = width;
+        this.height = height;
+      }
+
+      getContext() {
+        return {
+          drawImage: () => undefined,
+          getImageData: () => ({
+            data: new Uint8ClampedArray([
+              0, 80, 200, 255,
+              20, 100, 220, 255
+            ])
+          })
+        };
+      }
+    } as unknown as typeof OffscreenCanvas;
+    const file = {
+      name: "blue-panel.png",
+      type: "image/png",
+      size: 8,
+      arrayBuffer: async () => new Uint8Array([137, 80, 78, 71]).buffer
+    };
+    const dom = new JSDOM(
+      `<!doctype html>
+      <title>AGE-FX Visual Signature Sample</title>
+      <main>
+        <article data-message-author-role="user"><p>Analyze the blue image.</p></article>
+      </main>`,
+      { url: "https://chatgpt.com/c/age-fx" }
+    );
+    globalThis.document = dom.window.document;
+
+    await rememberSelectedFiles([file]);
+    const messages = await extractVisibleMessages("https://chatgpt.com/c/age-fx");
+
+    expect(messages[0].attachments?.[0]?.analysisText).toContain(
+      "Visual signature: average rgb(10,90,210), brightness 82, dominant blue, orientation landscape."
+    );
+    globalThis.createImageBitmap = previousCreateImageBitmap;
+    globalThis.OffscreenCanvas = previousOffscreenCanvas;
+  });
+
   it("extracts Gemini user and assistant messages", async () => {
     loadFixture("gemini-sample.html", "https://gemini.google.com/app/age-fx");
 

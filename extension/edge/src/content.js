@@ -374,15 +374,97 @@
     }
   }
 
-  function uploadAnalysisText(file, mimeType, extractedText, dimensions = null) {
+  function dominantChannel(red, green, blue) {
+    if (blue >= red && blue >= green) return "blue";
+    if (green >= red && green >= blue) return "green";
+    return "red";
+  }
+
+  function orientationFromDimensions(dimensions) {
+    if (!dimensions) return "unknown";
+    if (dimensions.width === dimensions.height) return "square";
+    return dimensions.width > dimensions.height ? "landscape" : "portrait";
+  }
+
+  async function imageVisualSignature(file, mimeType, dimensions) {
+    if (
+      !mimeType?.startsWith("image/") ||
+      !dimensions ||
+      typeof root.createImageBitmap !== "function" ||
+      typeof root.OffscreenCanvas !== "function"
+    ) {
+      return null;
+    }
+
+    try {
+      const sampleWidth = Math.max(1, Math.min(8, dimensions.width));
+      const sampleHeight = Math.max(1, Math.min(8, dimensions.height));
+      const bitmap = await root.createImageBitmap(file);
+      const canvas = new root.OffscreenCanvas(sampleWidth, sampleHeight);
+      const context = canvas.getContext("2d");
+
+      if (!context?.drawImage || !context?.getImageData) {
+        return null;
+      }
+
+      context.drawImage(bitmap, 0, 0, sampleWidth, sampleHeight);
+
+      if (typeof bitmap.close === "function") {
+        bitmap.close();
+      }
+
+      const pixels = context.getImageData(0, 0, sampleWidth, sampleHeight).data;
+      let red = 0;
+      let green = 0;
+      let blue = 0;
+      let count = 0;
+
+      for (let index = 0; index < pixels.length; index += 4) {
+        const alpha = pixels[index + 3];
+
+        if (alpha === 0) {
+          continue;
+        }
+
+        red += pixels[index];
+        green += pixels[index + 1];
+        blue += pixels[index + 2];
+        count += 1;
+      }
+
+      if (count === 0) {
+        return null;
+      }
+
+      const averageRed = Math.round(red / count);
+      const averageGreen = Math.round(green / count);
+      const averageBlue = Math.round(blue / count);
+      const brightness = Math.round(
+        0.2126 * averageRed + 0.7152 * averageGreen + 0.0722 * averageBlue
+      );
+
+      return `Visual signature: average rgb(${averageRed},${averageGreen},${averageBlue}), brightness ${brightness}, dominant ${dominantChannel(averageRed, averageGreen, averageBlue)}, orientation ${orientationFromDimensions(dimensions)}.`;
+    } catch {
+      return null;
+    }
+  }
+
+  function uploadAnalysisText(
+    file,
+    mimeType,
+    extractedText,
+    dimensions = null,
+    visualSignature = null
+  ) {
     const size = Number(file?.size ?? 0);
 
     if (mimeType?.startsWith("image/")) {
       const dimensionText = dimensions
         ? ` Image dimensions: ${dimensions.width}x${dimensions.height}.`
         : "";
+      const signatureText = visualSignature ? ` ${visualSignature}` : "";
 
-      return `Local image upload captured for message binding. File size: ${size} bytes.${dimensionText}`;
+      return `Local image upload captured for message binding. File size: ${size} bytes.${dimensionText}${signatureText}`;
     }
 
     if (isPdfFile(file)) {
@@ -412,6 +494,7 @@
       const mimeType = normalizeNullableText(file?.type) ?? inferMimeTypeFromUrl(name);
       const extractedText = await readFileTextPreview(file);
       const dimensions = await imageDimensions(file, mimeType);
+      const visualSignature = await imageVisualSignature(file, mimeType, dimensions);
       const snapshotDataUrl = await imageSnapshotDataUrl(file, mimeType);
       const attachmentType = mimeType?.startsWith("image/") ? "image" : "file";
 
@@ -424,7 +507,13 @@
         visibleText: `local upload: ${name}`,
         extractedText,
         snapshotDataUrl,
-        analysisText: uploadAnalysisText(file, mimeType, extractedText, dimensions)
+        analysisText: uploadAnalysisText(
+          file,
+          mimeType,
+          extractedText,
+          dimensions,
+          visualSignature
+        )
       });
     }
 
