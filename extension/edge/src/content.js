@@ -320,11 +320,37 @@
     return null;
   }
 
-  function uploadAnalysisText(file, mimeType, extractedText) {
+  async function imageDimensions(file, mimeType) {
+    if (!mimeType?.startsWith("image/") || typeof root.createImageBitmap !== "function") {
+      return null;
+    }
+
+    try {
+      const bitmap = await root.createImageBitmap(file);
+      const dimensions = {
+        width: Number(bitmap.width),
+        height: Number(bitmap.height)
+      };
+
+      if (typeof bitmap.close === "function") {
+        bitmap.close();
+      }
+
+      return dimensions.width > 0 && dimensions.height > 0 ? dimensions : null;
+    } catch {
+      return null;
+    }
+  }
+
+  function uploadAnalysisText(file, mimeType, extractedText, dimensions = null) {
     const size = Number(file?.size ?? 0);
 
     if (mimeType?.startsWith("image/")) {
-      return `Local image upload captured for message binding. File size: ${size} bytes.`;
+      const dimensionText = dimensions
+        ? ` Image dimensions: ${dimensions.width}x${dimensions.height}.`
+        : "";
+
+      return `Local image upload captured for message binding. File size: ${size} bytes.${dimensionText}`;
     }
 
     if (isPdfFile(file)) {
@@ -353,6 +379,7 @@
       const name = normalizeNullableText(file?.name) ?? "local upload";
       const mimeType = normalizeNullableText(file?.type) ?? inferMimeTypeFromUrl(name);
       const extractedText = await readFileTextPreview(file);
+      const dimensions = await imageDimensions(file, mimeType);
       const attachmentType = mimeType?.startsWith("image/") ? "image" : "file";
 
       snapshots.push({
@@ -363,7 +390,7 @@
         mimeType,
         visibleText: `local upload: ${name}`,
         extractedText,
-        analysisText: uploadAnalysisText(file, mimeType, extractedText)
+        analysisText: uploadAnalysisText(file, mimeType, extractedText, dimensions)
       });
     }
 

@@ -224,6 +224,13 @@ describe("Edge extension content capture", () => {
   });
 
   it("records image uploads as visual materials with local metadata", async () => {
+    const previousCreateImageBitmap = globalThis.createImageBitmap;
+    globalThis.createImageBitmap = async () =>
+      ({
+        width: 640,
+        height: 360,
+        close: () => undefined
+      }) as unknown as ImageBitmap;
     const file = {
       name: "concept.png",
       type: "image/png",
@@ -249,9 +256,11 @@ describe("Edge extension content capture", () => {
         label: "concept.png",
         mimeType: "image/png",
         extractedText: null,
-        analysisText: "Local image upload captured for message binding. File size: 2048 bytes."
+        analysisText:
+          "Local image upload captured for message binding. File size: 2048 bytes. Image dimensions: 640x360."
       })
     );
+    globalThis.createImageBitmap = previousCreateImageBitmap;
   });
 
   it("extracts Gemini user and assistant messages", async () => {
